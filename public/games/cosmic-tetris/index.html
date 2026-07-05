@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic Tetris 3D</title>
+  <style>
+    body {
+      margin: 0;
+      background: #04010a;
+      color: #fff;
+      font-family: 'Orbitron', 'Courier New', sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+    #gameCanvas {
+      border: 3px solid #00f0ff;
+      box-shadow: 0 0 35px rgba(0, 240, 255, 0.4), inset 0 0 15px rgba(0, 240, 255, 0.1);
+      border-radius: 10px;
+      background: #090514;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      width: 260px;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: #00f0ff;
+      text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+      letter-spacing: 1px;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="hud">
+    <div>SCORE: <span id="scoreVal" style="color: #d946ef;">0</span></div>
+    <div>LINES: <span id="linesVal" style="color: #d946ef;">0</span></div>
+  </div>
+  <canvas id="gameCanvas" width="260" height="420"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const BLOCK_SIZE = 20;
+    const ROWS = 20;
+    const COLS = 12;
+    const offsetX = 10;
+    const offsetY = 10;
+
+    let score = 0;
+    let linesCleared = 0;
+    let gameOver = false;
+
+    // Grid representing game board
+    let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+    // Audio context synthesizers
+    let audioCtx = null;
+
+    function playSynth(freq, type, dur) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch (e) {}
+    }
+
+    // Tetromino definitions
+    const SHAPES = [
+      [[1, 1, 1, 1]], // I
+      [[1, 1, 1], [0, 1, 0]], // T
+      [[1, 1, 0], [0, 1, 1]], // Z
+      [[0, 1, 1], [1, 1, 0]], // S
+      [[1, 1], [1, 1]], // O
+      [[1, 1, 1], [1, 0, 0]], // L
+      [[1, 1, 1], [0, 0, 1]], // J
+    ];
+
+    const COLORS = [
+      null,
+      '#00f0ff', // neon cyan
+      '#d946ef', // neon magenta
+      '#ff9900', // neon orange
+      '#ffea00', // neon yellow
+      '#39ff14', // neon green
+      '#0066ff', // neon blue
+      '#ff0055', // neon red
+    ];
+
+    let piece = getRandomPiece();
+    let particles = [];
+    let starfield = [];
+
+    // Initialize floating starfield particles
+    for (let k = 0; k < 40; k++) {
+      starfield.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vy: Math.random() * 0.4 + 0.1,
+        size: Math.random() * 1.5
+      });
+    }
+
+    function getRandomPiece() {
+      const idx = Math.floor(Math.random() * SHAPES.length);
+      return {
+        shape: SHAPES[idx],
+        colorIndex: idx + 1,
+        row: 0,
+        col: Math.floor(COLS / 2) - Math.floor(SHAPES[idx][0].length / 2)
+      };
+    }
+
+    // Touch support for mobiles (Tap rotates, swipe moves - simulated via clicking sides)
+    canvas.addEventListener('click', e => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      if (clickX < rect.width * 0.3) {
+        moveLeft();
+      } else if (clickX > rect.width * 0.7) {
+        moveRight();
+      } else {
+        rotatePiece();
+      }
+    });
+
+    let keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (gameOver) return;
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft();
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight();
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') { dropPiece(); playSynth(110, 'triangle', 0.05); }
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') rotatePiece();
+      if (e.code === 'Space') hardDrop();
+    });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function moveLeft() {
+      piece.col--;
+      if (checkCollision()) piece.col++;
+      else playSynth(220, 'sine', 0.05);
+    }
+
+    function moveRight() {
+      piece.col++;
+      if (checkCollision()) piece.col--;
+      else playSynth(220, 'sine', 0.05);
+    }
+
+    function rotatePiece() {
+      const originalShape = piece.shape;
+      const rotated = piece.shape[0].map((_, colIndex) =>
+        piece.shape.map(row => row[colIndex]).reverse()
+      );
+      piece.shape = rotated;
+      if (checkCollision()) {
+        piece.shape = originalShape; // revert
+      } else {
+        playSynth(330, 'sine', 0.08);
+      }
+    }
+
+    function getGhostRow() {
+      let ghostRow = piece.row;
+      while (true) {
+        ghostRow++;
+        if (checkCollision(ghostRow)) {
+          ghostRow--;
+          break;
+        }
+      }
+      return ghostRow;
+    }
+
+    function hardDrop() {
+      const ghost = getGhostRow();
+      piece.row = ghost;
+      lockPiece();
+      clearLines();
+      piece = getRandomPiece();
+      playSynth(150, 'triangle', 0.15);
+      if (checkCollision()) {
+        gameOver = true;
+        window.parent.postMessage({ type: 'arcadecore_score', score }, '*');
+      }
+    }
+
+    function dropPiece() {
+      piece.row++;
+      if (checkCollision()) {
+        piece.row--;
+        lockPiece();
+        clearLines();
+        piece = getRandomPiece();
+        if (checkCollision()) {
+          gameOver = true;
+          window.parent.postMessage({ type: 'arcadecore_score', score }, '*');
+        }
+      }
+    }
+
+    function checkCollision(rOffset = piece.row, cOffset = piece.col) {
+      for (let r = 0; r < piece.shape.length; r++) {
+        for (let c = 0; c < piece.shape[r].length; c++) {
+          if (piece.shape[r][c]) {
+            const nextRow = rOffset + r;
+            const nextCol = cOffset + c;
+            if (
+              nextCol < 0 ||
+              nextCol >= COLS ||
+              nextRow >= ROWS ||
+              (nextRow >= 0 && board[nextRow][nextCol])
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function lockPiece() {
+      for (let r = 0; r < piece.shape.length; r++) {
+        for (let c = 0; c < piece.shape[r].length; c++) {
+          if (piece.shape[r][c]) {
+            board[piece.row + r][piece.col + c] = piece.colorIndex;
+          }
+        }
+      }
+    }
+
+    function clearLines() {
+      let cleared = 0;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r].every(val => val > 0)) {
+          // Spawn neon particles explosion
+          for (let col = 0; col < COLS; col++) {
+            const px = offsetX + col * BLOCK_SIZE + BLOCK_SIZE/2;
+            const py = offsetY + r * BLOCK_SIZE + BLOCK_SIZE/2;
+            const color = COLORS[board[r][col]];
+            for (let k = 0; k < 3; k++) {
+              particles.push({
+                x: px, y: py,
+                vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 3 - 2,
+                r: Math.random() * 3 + 1, color, life: 1, decay: 0.03
+              });
+            }
+          }
+          board.splice(r, 1);
+          board.unshift(Array(COLS).fill(0));
+          r++; // check same line idx
+          cleared++;
+        }
+      }
+      if (cleared > 0) {
+        score += [0, 100, 300, 600, 1000][cleared];
+        linesCleared += cleared;
+        document.getElementById('scoreVal').innerText = score;
+        document.getElementById('linesVal').innerText = linesCleared;
+        playSynth(520 * cleared, 'sine', 0.25);
+      }
+    }
+
+    // Auto drop timing ticks
+    let lastDropTime = 0;
+    let dropInterval = 800; // drop every 800ms
+
+    function update(time) {
+      if (gameOver) return;
+
+      const elapsed = time - lastDropTime;
+      if (elapsed > dropInterval) {
+        dropPiece();
+        lastDropTime = time;
+      }
+
+      // Update background stars
+      starfield.forEach(s => {
+        s.y += s.vy;
+        if (s.y > canvas.height) s.y = 0;
+      });
+
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= p.decay;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    function drawBlock(x, y, colorIdx, isGhost = false) {
+      const px = offsetX + x * BLOCK_SIZE;
+      const py = offsetY + y * BLOCK_SIZE;
+
+      ctx.save();
+      if (isGhost) {
+        ctx.strokeStyle = COLORS[colorIdx];
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 1, py + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+      } else {
+        // High graphics radial glassmorphism block gradient
+        const grad = ctx.createRadialGradient(px + 6, py + 6, 2, px + 10, py + 10, 10);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, COLORS[colorIdx]);
+        grad.addColorStop(1, '#06020d');
+
+        ctx.fillStyle = grad;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = COLORS[colorIdx];
+        ctx.beginPath();
+        ctx.roundRect(px + 1, py + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2, 4);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background space stars
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      starfield.forEach(s => {
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+      });
+
+      // Draw grid borders
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.1)';
+      ctx.lineWidth = 1;
+      for (let r = 0; r <= ROWS; r++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + r * BLOCK_SIZE);
+        ctx.lineTo(offsetX + COLS * BLOCK_SIZE, offsetY + r * BLOCK_SIZE);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= COLS; c++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + c * BLOCK_SIZE, offsetY);
+        ctx.lineTo(offsetX + c * BLOCK_SIZE, offsetY + ROWS * BLOCK_SIZE);
+        ctx.stroke();
+      }
+
+      // Draw locked board blocks
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (board[r][c]) {
+            drawBlock(c, r, board[r][c]);
+          }
+        }
+      }
+
+      // Draw ghost piece landing projection
+      if (!gameOver) {
+        const ghostRow = getGhostRow();
+        for (let r = 0; r < piece.shape.length; r++) {
+          for (let c = 0; c < piece.shape[r].length; c++) {
+            if (piece.shape[r][c]) {
+              drawBlock(piece.col + c, ghostRow + r, piece.colorIndex, true);
+            }
+          }
+        }
+      }
+
+      // Draw active falling piece
+      if (!gameOver) {
+        for (let r = 0; r < piece.shape.length; r++) {
+          for (let c = 0; c < piece.shape[r].length; c++) {
+            if (piece.shape[r][c]) {
+              drawBlock(piece.col + c, piece.row + r, piece.colorIndex);
+            }
+          }
+        }
+      }
+
+      // Draw line-clearing particles
+      particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1.0; // reset
+
+      // Game Over Screen Overlay
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(4, 1, 10, 0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#00f0ff';
+        ctx.font = 'bold 18px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillText('MISSION COMPLETED', canvas.width / 2, canvas.height / 2 - 15);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px Orbitron';
+        ctx.fillText('PRESS ANY KEY TO RESTART', canvas.width / 2, canvas.height / 2 + 15);
+      }
+    }
+
+    function loop(time) {
+      update(time);
+      draw();
+
+      if (gameOver && Object.keys(keys).length > 0) {
+        gameOver = false;
+        score = 0;
+        linesCleared = 0;
+        board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        piece = getRandomPiece();
+        document.getElementById('scoreVal').innerText = '0';
+        document.getElementById('linesVal').innerText = '0';
+        playSynth(440, 'sine', 0.15);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

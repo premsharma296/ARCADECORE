@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcadeCore Procedural Mini-Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #06060c;
+      color: #fff;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+    #gameCanvas {
+      border: 3px solid #d946ef;
+      box-shadow: 0 0 20px rgba(217, 70, 239, 0.4);
+      background: #090912;
+      max-width: 95vw;
+      max-height: 75vh;
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 1.5rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #00ffcc;
+      text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+    }
+    .score-panel {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #ffcc00;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1 id="gameTitle">LOADING...</h1>
+  <div class="score-panel">Score: <span id="scoreVal">0</span></div>
+  <canvas id="gameCanvas" width="480" height="320"></canvas>
+
+  <script>
+    // Parse URL params
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get('title') || 'Procedural Arcade';
+    const category = params.get('category') || 'arcade';
+    document.getElementById('gameTitle').innerText = title;
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let score = 0;
+    let gameOver = false;
+
+    // Game variables: Retro Ball Dodge
+    let player = { x: canvas.width / 2 - 15, y: canvas.height - 30, w: 30, h: 10, color: '#00ffcc', speed: 8 };
+    let obstacles = [];
+    let obstacleSpeed = 2.5;
+    let spawnRate = 40;
+    let frameCount = 0;
+
+    let keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Touch controls for mobile support
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touchX = e.touches[0].clientX - rect.left;
+      const scaleX = canvas.width / rect.width;
+      player.x = touchX * scaleX - player.w / 2;
+    });
+
+    function spawnObstacle() {
+      const size = Math.random() * 15 + 10;
+      obstacles.push({
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        w: size,
+        h: size,
+        color: '#ff0055',
+        speed: Math.random() * 2 + obstacleSpeed
+      });
+    }
+
+    function update() {
+      if (gameOver) return;
+
+      frameCount++;
+      if (frameCount % spawnRate === 0) {
+        spawnObstacle();
+        if (frameCount % 200 === 0) obstacleSpeed += 0.3; // increase speed difficulty
+      }
+
+      // Move player
+      if (keys['ArrowLeft'] || keys['KeyA']) {
+        player.x -= player.speed;
+      }
+      if (keys['ArrowRight'] || keys['KeyD']) {
+        player.x += player.speed;
+      }
+
+      // Boundary limits
+      if (player.x < 0) player.x = 0;
+      if (player.x > canvas.width - player.w) player.x = canvas.width - player.w;
+
+      // Update obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.y += obs.speed;
+
+        // Collision Check
+        if (
+          obs.x < player.x + player.w &&
+          obs.x + obs.w > player.x &&
+          obs.y < player.y + player.h &&
+          obs.y + obs.h > player.y
+        ) {
+          gameOver = true;
+          triggerGameOver();
+        }
+
+        // Score increment if cleared bottom
+        if (obs.y > canvas.height) {
+          obstacles.splice(i, 1);
+          score += 10;
+          document.getElementById('scoreVal').innerText = score;
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Player paddle
+      ctx.fillStyle = player.color;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = player.color;
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      // Draw obstacles falling
+      ctx.shadowBlur = 8;
+      obstacles.forEach(obs => {
+        ctx.fillStyle = obs.color;
+        ctx.shadowColor = obs.color;
+        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+      });
+      
+      ctx.shadowBlur = 0; // reset shadow
+
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ff0055';
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 10);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px Courier New';
+        ctx.fillText('Press SPACE to restart', canvas.width / 2, canvas.height / 2 + 20);
+      }
+    }
+
+    function triggerGameOver() {
+      // Dispatch custom win / score updates to parent frame for dynamic XP calculation
+      window.parent.postMessage({ type: 'arcadecore_score', score: score }, '*');
+    }
+
+    function loop() {
+      update();
+      draw();
+      
+      if (gameOver && keys['Space']) {
+        // Reset game state
+        score = 0;
+        gameOver = false;
+        obstacles = [];
+        obstacleSpeed = 2.5;
+        frameCount = 0;
+        document.getElementById('scoreVal').innerText = '0';
+      }
+      
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>

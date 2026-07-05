@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Clicker</title>
+  <style>
+    body {
+      margin: 0;
+      background: #040209;
+      color: #fff;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+    #gameCanvas {
+      border: 2px solid #ffaa00;
+      box-shadow: 0 0 25px rgba(255, 170, 0, 0.4);
+      background: #07040e;
+      max-width: 95vw;
+      max-height: 80vh;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      width: 480px;
+      max-width: 95vw;
+      margin-bottom: 8px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      color: #ffaa00;
+      text-shadow: 0 0 8px rgba(255, 170, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hud">
+    <div>COINS: <span id="coinsVal">0</span></div>
+    <div>CPS: <span id="cpsVal">0</span></div>
+  </div>
+  <canvas id="gameCanvas" width="480" height="320"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let coins = 0;
+    let clickValue = 1;
+    let autoCoins = 0;
+
+    // Upgrades
+    let upgrades = [
+      { name: 'GPU Rig', cost: 15, cpsBonus: 1, owned: 0 },
+      { name: 'AI Node', cost: 100, cpsBonus: 8, owned: 0 },
+      { name: 'ASIC Miner', cost: 500, cpsBonus: 45, owned: 0 }
+    ];
+
+    // Main Bitcoin Core node positioning
+    let coinCore = {
+      x: canvas.width / 2 - 40, // offset for upgrades panel space on left/right
+      y: canvas.height / 2,
+      radius: 50,
+      scale: 1,
+      angle: 0
+    };
+
+    // Upgrades Panel spacing
+    let panelX = 330;
+    let panelW = 140;
+
+    // Floating text animations
+    let floatTexts = [];
+
+    // Keyboard and mouse key status
+    let keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Audio confirmation synth
+    function playChirp(freq, duration) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch {}
+    }
+
+    // Trigger score saving message
+    function triggerSave() {
+      window.parent.postMessage({ type: 'arcadecore_score', score: Math.floor(coins) }, '*');
+    }
+
+    // Check upgrade purchase click
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      // Check click on Upgrades
+      if (clickX >= panelX && clickX <= panelX + panelW) {
+        upgrades.forEach((up, idx) => {
+          const itemY = 40 + idx * 75;
+          if (clickY >= itemY && clickY <= itemY + 60) {
+            if (coins >= up.cost) {
+              coins -= up.cost;
+              up.owned++;
+              autoCoins += up.cpsBonus;
+              up.cost = Math.floor(up.cost * 1.35); // scale cost up
+              playChirp(400, 0.15);
+              triggerSave();
+            } else {
+              playChirp(150, 0.1); // fail chime
+            }
+          }
+        });
+        return;
+      }
+
+      // Check click on central bitcoin core
+      const dist = Math.hypot(clickX - coinCore.x, clickY - coinCore.y);
+      if (dist <= coinCore.radius * coinCore.scale) {
+        coins += clickValue;
+        coinCore.scale = 0.9;
+        floatTexts.push({
+          x: clickX,
+          y: clickY,
+          text: `+${clickValue}`,
+          opacity: 1,
+          speed: 1.2
+        });
+        playChirp(650, 0.05);
+        triggerSave();
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      coinCore.scale = 1;
+    });
+
+    // Mobile touch controls
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const clickX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+      const clickY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+
+      // Upgrade check
+      if (clickX >= panelX && clickX <= panelX + panelW) {
+        upgrades.forEach((up, idx) => {
+          const itemY = 40 + idx * 75;
+          if (clickY >= itemY && clickY <= itemY + 60) {
+            if (coins >= up.cost) {
+              coins -= up.cost;
+              up.owned++;
+              autoCoins += up.cpsBonus;
+              up.cost = Math.floor(up.cost * 1.35);
+              playChirp(400, 0.15);
+              triggerSave();
+            } else {
+              playChirp(150, 0.1);
+            }
+          }
+        });
+        return;
+      }
+
+      const dist = Math.hypot(clickX - coinCore.x, clickY - coinCore.y);
+      if (dist <= coinCore.radius * coinCore.scale) {
+        coins += clickValue;
+        coinCore.scale = 0.9;
+        floatTexts.push({
+          x: clickX,
+          y: clickY,
+          text: `+${clickValue}`,
+          opacity: 1,
+          speed: 1.2
+        });
+        playChirp(650, 0.05);
+        triggerSave();
+      }
+    });
+
+    canvas.addEventListener('touchend', () => {
+      coinCore.scale = 1;
+    });
+
+    // Accumulate passive Coins income
+    setInterval(() => {
+      if (autoCoins > 0) {
+        coins += autoCoins / 10; // add fraction every 100ms
+        document.getElementById('coinsVal').innerText = Math.floor(coins);
+        document.getElementById('cpsVal').innerText = autoCoins;
+      }
+    }, 100);
+
+    function update() {
+      // Rotate core Bitcoin graphic
+      coinCore.angle += 0.01;
+
+      // Update HUD elements
+      document.getElementById('coinsVal').innerText = Math.floor(coins);
+      document.getElementById('cpsVal').innerText = autoCoins;
+
+      // Update floating texts
+      for (let i = floatTexts.length - 1; i >= 0; i--) {
+        const ft = floatTexts[i];
+        ft.y -= ft.speed;
+        ft.opacity -= 0.02;
+        if (ft.opacity <= 0) {
+          floatTexts.splice(i, 1);
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Left/Center Workspace separation boundary line
+      ctx.strokeStyle = 'rgba(255, 170, 0, 0.15)';
+      ctx.beginPath();
+      ctx.moveTo(panelX - 10, 0);
+      ctx.lineTo(panelX - 10, canvas.height);
+      ctx.stroke();
+
+      // Draw Central Bitcoin Core Node
+      ctx.save();
+      ctx.translate(coinCore.x, coinCore.y);
+      ctx.scale(coinCore.scale, coinCore.scale);
+      ctx.rotate(coinCore.angle);
+
+      // Draw outer glowing circle
+      ctx.fillStyle = '#ffaa00';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(0, 0, coinCore.radius, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Draw inside styling details
+      ctx.fillStyle = '#07040e';
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(0, 0, coinCore.radius - 8, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Draw B Character symbol logo in center
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = 'bold 36px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('₿', 0, 0);
+
+      ctx.restore();
+
+      // Draw floating click numbers
+      floatTexts.forEach(ft => {
+        ctx.fillStyle = `rgba(255, 255, 255, ${ft.opacity})`;
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(ft.text, ft.x, ft.y);
+      });
+
+      // Draw Upgrades Section Header Title
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('HARDWARE UPGRADES', panelX, 20);
+
+      // Draw Upgrade items panels
+      upgrades.forEach((up, idx) => {
+        const itemY = 40 + idx * 75;
+
+        // Draw outer borders
+        ctx.strokeStyle = coins >= up.cost ? '#ffaa00' : 'rgba(255, 255, 255, 0.15)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.fillRect(panelX, itemY, panelW, 60);
+        ctx.strokeRect(panelX, itemY, panelW, 60);
+
+        // Draw details text labels
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(up.name, panelX + 10, itemY + 20);
+
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = '10px monospace';
+        ctx.fillText(`Cost: ${up.cost} COINS`, panelX + 10, itemY + 36);
+
+        ctx.fillStyle = '#00ffcc';
+        ctx.font = '9px monospace';
+        ctx.fillText(`Owned: ${up.owned} (+${up.owned * up.cpsBonus} CPS)`, panelX + 10, itemY + 49);
+      });
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
