@@ -95,11 +95,14 @@ export default function NeonShowdownPage() {
       const dc = pc.createDataChannel('game')
       setupDataChannel(dc)
 
-      // Listen for ICE candidates
-      const pendingIce: any[] = []
+      // Listen for ICE candidates and upload immediately
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          pendingIce.push(event.candidate)
+        if (event.candidate && roomCode) {
+          fetch('/api/realtime/signaling', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'send_ice', code: roomCode, ice: JSON.stringify(event.candidate), role: 'host' })
+          }).catch(() => {})
         }
       }
 
@@ -123,18 +126,19 @@ export default function NeonShowdownPage() {
       setRoomCode(generatedCode)
       setConnectionStatus('waiting')
 
-      // Upload accumulated ICE candidates to DB
-      setTimeout(async () => {
-        for (const candidate of pendingIce) {
-          await fetch('/api/realtime/signaling', {
+      // Listen for ICE candidates again with the newly generated code
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          fetch('/api/realtime/signaling', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'send_ice', code: generatedCode, ice: JSON.stringify(candidate), role: 'host' })
-          })
+            body: JSON.stringify({ action: 'send_ice', code: generatedCode, ice: JSON.stringify(event.candidate), role: 'host' })
+          }).catch(() => {})
         }
-      }, 1000)
+      }
 
-      // Start polling loop for Guest SDP response
+      // Start polling loop for Guest SDP response and Guest ICE candidates
+      const polledGuestIce = new Set<string>()
       pollIntervalRef.current = setInterval(async () => {
         const pollRes = await fetch('/api/realtime/signaling', {
           method: 'POST',
@@ -143,24 +147,29 @@ export default function NeonShowdownPage() {
         })
         const pollData = await pollRes.json()
 
-        if (pollData.success && pollData.guestSdp && pc.signalingState !== 'stable') {
-          setConnectionStatus('connecting')
-          const answer = JSON.parse(pollData.guestSdp)
-          await pc.setRemoteDescription(new RTCSessionDescription(answer))
+        if (pollData.success) {
+          // Process SDP Answer
+          if (pollData.guestSdp && pc.signalingState !== 'stable') {
+            setConnectionStatus('connecting')
+            const answer = JSON.parse(pollData.guestSdp)
+            await pc.setRemoteDescription(new RTCSessionDescription(answer))
+          }
           
-          // Import guest ICE candidates
+          // Process Guest ICE candidates
           if (pollData.guestIce && pollData.guestIce.length > 0) {
             for (const iceCandidateStr of pollData.guestIce) {
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(iceCandidateStr)))
-              } catch (e) {
-                console.warn('Failed to add remote ICE:', e)
+              if (!polledGuestIce.has(iceCandidateStr)) {
+                polledGuestIce.add(iceCandidateStr)
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(iceCandidateStr)))
+                } catch (e) {
+                  console.warn('Failed to add remote ICE:', e)
+                }
               }
             }
           }
-          clearInterval(pollIntervalRef.current)
         }
-      }, 2000)
+      }, 1500)
 
     } catch (e: any) {
       setConnectionStatus('failed')
@@ -191,11 +200,14 @@ export default function NeonShowdownPage() {
         setupDataChannel(event.channel)
       }
 
-      // Capture ICE
-      const pendingIce: any[] = []
+      // Capture and post guest ICE candidates immediately
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          pendingIce.push(event.candidate)
+          fetch('/api/realtime/signaling', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'send_ice', code: inputCode, ice: JSON.stringify(event.candidate), role: 'guest' })
+          }).catch(() => {})
         }
       }
 
@@ -225,27 +237,29 @@ export default function NeonShowdownPage() {
         body: JSON.stringify({ action: 'join', code: inputCode, sdp: JSON.stringify(answer) })
       })
 
-      // Upload ICE
-      setTimeout(async () => {
-        for (const candidate of pendingIce) {
-          await fetch('/api/realtime/signaling', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'send_ice', code: inputCode, ice: JSON.stringify(candidate), role: 'guest' })
-          })
-        }
-      }, 1000)
+      // Start continuous poll loop for Host ICE Candidates
+      const polledHostIce = new Set<string>()
+      pollIntervalRef.current = setInterval(async () => {
+        const pollRes = await fetch('/api/realtime/signaling', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'poll', code: inputCode })
+        })
+        const pollData = await pollRes.json()
 
-      // Import host ICE candidates
-      if (data.hostIce && data.hostIce.length > 0) {
-        for (const iceCandidateStr of data.hostIce) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(iceCandidateStr)))
-          } catch (e) {
-            console.warn('Failed to add remote ICE:', e)
+        if (pollData.success && pollData.hostIce && pollData.hostIce.length > 0) {
+          for (const iceCandidateStr of pollData.hostIce) {
+            if (!polledHostIce.has(iceCandidateStr)) {
+              polledHostIce.add(iceCandidateStr)
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(iceCandidateStr)))
+              } catch (e) {
+                console.warn('Failed to add remote ICE:', e)
+              }
+            }
           }
         }
-      }
+      }, 1500)
 
     } catch (e: any) {
       setConnectionStatus('failed')
