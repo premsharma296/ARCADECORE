@@ -130,13 +130,13 @@ export async function GET(req: NextRequest) {
       database: dbConnected ? 'Connected' : 'Error',
       clerk: process.env.CLERK_SECRET_KEY ? 'Connected' : 'Not connected',
       razorpay: (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) ? 'Connected' : 'Not connected',
-      googleAnalytics: 'Not connected',
-      clarity: 'Not connected',
-      googleSearchConsole: 'Not connected',
-      redis: 'Not connected',
-      cloudinary: 'Not connected',
-      queueStatus: 'Inactive',
-      backgroundJobs: 'Not configured'
+      googleAnalytics: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ? 'Connected' : 'Not connected',
+      clarity: process.env.NEXT_PUBLIC_CLARITY_ID ? 'Connected' : 'Not connected',
+      googleSearchConsole: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION ? 'Connected' : 'Not connected',
+      redis: process.env.REDIS_URL ? 'Connected' : 'Not connected',
+      cloudinary: process.env.CLOUDINARY_URL ? 'Connected' : 'Not connected',
+      queueStatus: process.env.BACKGROUND_QUEUE_URL ? 'Active' : 'Inactive',
+      backgroundJobs: process.env.BACKGROUND_QUEUE_URL ? 'Connected' : 'Not configured'
     }
 
     return NextResponse.json({
