@@ -79,28 +79,91 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
     }
   }
 
+  const [iframeSrc, setIframeSrc] = useState(iframeUrl)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const search = window.location.search
+      if (search) {
+        const separator = iframeUrl.includes('?') ? '&' : '?'
+        setIframeSrc(`${iframeUrl}${separator}${search.substring(1)}`)
+      } else {
+        setIframeSrc(iframeUrl)
+      }
+    }
+  }, [iframeUrl])
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return
 
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => {
+    const elem = containerRef.current
+    const isCurrentlyFullscreen = !!(
+      document.fullscreenElement || 
+      (document as any).webkitFullscreenElement || 
+      (document as any).mozFullScreenElement || 
+      (document as any).msFullscreenElement
+    )
+
+    if (!isCurrentlyFullscreen) {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => {
+          console.error('Standard fullscreen failed:', err)
+          setIsFullscreen(true) // CSS fallback
+        })
+      } else if ((elem as any).webkitRequestFullscreen) {
+        // iOS Safari support
+        try {
+          (elem as any).webkitRequestFullscreen()
+          setIsFullscreen(true)
+        } catch (e) {
+          setIsFullscreen(true) // CSS fallback
+        }
+      } else if ((elem as any).mozRequestFullScreen) {
+        (elem as any).mozRequestFullScreen()
         setIsFullscreen(true)
-      }).catch((err) => {
-        console.error('Fullscreen request failed:', err)
-      })
+      } else if ((elem as any).msRequestFullscreen) {
+        (elem as any).msRequestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        setIsFullscreen(true) // CSS fallback
+      }
     } else {
-      document.exitFullscreen()
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen()
+      } else if ((document as any).mozCancelFullScreen) {
+        (document as any).mozCancelFullScreen()
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen()
+      }
       setIsFullscreen(false)
     }
   }
 
-  // Handle ESC or native fullscreen change
+  // Handle native fullscreen changes including iOS webkit events
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
+      const isFull = !!(
+        document.fullscreenElement || 
+        (document as any).webkitFullscreenElement || 
+        (document as any).mozFullScreenElement || 
+        (document as any).msFullscreenElement
+      )
+      setIsFullscreen(isFull)
     }
+    
     document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
+    }
   }, [])
 
   return (
@@ -109,7 +172,7 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
       <div
         ref={containerRef}
         className={`relative w-full aspect-video rounded-2xl overflow-hidden border border-border/60 bg-black shadow-2xl ${
-          isFullscreen ? 'w-screen h-screen rounded-none border-0' : ''
+          isFullscreen ? 'fixed inset-0 w-screen h-screen rounded-none border-0 z-[9999]' : ''
         }`}
       >
         {/* Ad Gate Screen */}
@@ -153,9 +216,10 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
         {/* Real Sandbox Game Iframe */}
         {isPlaying && !showAd && (
           <iframe
-            src={iframeUrl}
+            src={iframeSrc}
             title={title}
             allow="autoplay; gamepad; fullscreen"
+            allowFullScreen={true}
             sandbox="allow-scripts allow-same-origin allow-popups"
             className="w-full h-full border-0"
           />

@@ -487,9 +487,9 @@ function updateSkinDisplay() {
 
 function getInviteUrl() {
   if (STATE.onlineMode === 'HOST' && STATE.peerId) {
-    return `${window.location.origin}${window.location.pathname}?room=${STATE.peerId}`;
+    return `https://arcadecore.in/games/snake-game?room=${STATE.peerId}`;
   }
-  return window.location.href;
+  return `https://arcadecore.in/games/snake-game`;
 }
 
 function checkUrlParams() {
