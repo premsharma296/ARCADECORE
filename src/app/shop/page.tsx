@@ -86,8 +86,52 @@ export default function ShopPage() {
     window.dispatchEvent(new Event('arcadecore_coins_updated'))
   }
 
-  // Simulated Stripe payment
-  const handleBuyCoins = (amount: number, price: number) => {
+  // Check for successful Stripe checkout redirect parameter pings
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const success = params.get('success')
+      const sessionId = params.get('session_id')
+      const coinsAmount = params.get('coins')
+      const pricePaid = params.get('price')
+
+      if (success === 'true' && sessionId) {
+        setIsProcessingStripe(true)
+        
+        // Call backend verification route to securely verify the payment state
+        fetch(`/api/shop/verify-session?session_id=${sessionId}`)
+          .then(res => res.json())
+          .then(data => {
+            setIsProcessingStripe(false)
+            if (data.success) {
+              triggerCoinsUpdate(data.coins)
+              setStripeSuccessMessage(`Successfully purchased ${coinsAmount} Coins for $${pricePaid}!`)
+              sound.playWin()
+              confetti({
+                particleCount: 100,
+                spread: 75,
+                origin: { y: 0.6 }
+              })
+              // Clear URL search params
+              window.history.replaceState({}, document.title, window.location.pathname)
+              
+              setTimeout(() => {
+                setStripeSuccessMessage(null)
+              }, 4000)
+            } else {
+              alert(data.error || 'Payment verification failed.')
+            }
+          })
+          .catch(() => {
+            setIsProcessingStripe(false)
+            alert('Error verifying your Stripe payment.')
+          })
+      }
+    } catch {}
+  }, [])
+
+  // Stripe Checkout Integration
+  const handleBuyCoins = async (amount: number, price: number) => {
     if (!isSignedIn) {
       alert('Please log in with Clerk to make purchases!')
       return
@@ -95,32 +139,26 @@ export default function ShopPage() {
     
     sound.playClick()
     setIsProcessingStripe(true)
-    
-    setTimeout(() => {
-      // Complete simulated checkout transaction
-      const nextCoins = coins + amount
-      triggerCoinsUpdate(nextCoins)
-      setIsProcessingStripe(false)
 
-      // Persistent database transaction sync
-      fetch('/api/user/buy-coins', {
+    try {
+      const res = await fetch('/api/shop/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: price, coins: amount })
-      }).catch(() => {})
-      
-      setStripeSuccessMessage(`Successfully purchased ${amount} Coins for $${price}!`)
-      sound.playWin()
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
+        body: JSON.stringify({ coins: amount, price: price })
       })
 
-      setTimeout(() => {
-        setStripeSuccessMessage(null)
-      }, 4000)
-    }, 2200)
+      const data = await res.json()
+      if (res.ok && data.url) {
+        // Redirect user securely to Stripe hosted Checkout page
+        window.location.href = data.url
+      } else {
+        setIsProcessingStripe(false)
+        alert(data.error || 'Failed to initialize Stripe checkout session.')
+      }
+    } catch (e) {
+      setIsProcessingStripe(false)
+      alert('Network error connecting to Stripe checkout page.')
+    }
   }
 
   // Purchase cosmetic border
