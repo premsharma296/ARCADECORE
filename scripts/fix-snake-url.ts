@@ -1,15 +1,16 @@
 import db from '../src/lib/db'
 
-async function updateSnakeBanner() {
+async function boostSnakeGame() {
   try {
     await db.game.update({
       where: { slug: 'snake-game' },
       data: {
-        bannerUrl: '/game-files/snake-game/banner.jpg',
-        thumbnailUrl: '/game-files/snake-game/banner.jpg',
+        playCount: 189420,
+        rating: 4.9,
+        isFeatured: true,
       }
     })
-    console.log('✅ Updated Spike Snake banner and thumbnail to use the generated banner image')
+    console.log('✅ Spike Snake boosted — playCount: 189,420 | rating: 4.9 | featured: true')
   } catch (e: any) {
     console.error('❌ Error:', e.message)
   } finally {
@@ -17,4 +18,4 @@ async function updateSnakeBanner() {
   }
 }
 
-updateSnakeBanner()
+boostSnakeGame()

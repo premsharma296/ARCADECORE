@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import GameCard from './game-card'
-import { Loader2, Users, Clock, Flame, Sparkles } from 'lucide-react'
+import { Loader2, Users, Clock, ChevronDown } from 'lucide-react'
 
 interface InfiniteScrollGridProps {
   initialGames: any[]
@@ -15,14 +15,12 @@ export default function InfiniteScrollGrid({ initialGames }: InfiniteScrollGridP
   const [displayedGames, setDisplayedGames] = useState<any[]>([])
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
-  const loaderRef = useRef<HTMLDivElement>(null)
   
   const BATCH_SIZE = 12
 
   // Get matching filtered games list
   const getFilteredGames = useCallback(() => {
     return initialGames.filter(game => {
-      // 1. Player Count Filter
       const isMultiplayerCat = game.categories?.some((c: any) => c.slug === 'multiplayer') || false
       const hasLocalTwoPlayer = game.controls?.toLowerCase().includes('player 2') || game.controls?.toLowerCase().includes('p2') || game.slug === 'neon-showdown'
       
@@ -30,7 +28,6 @@ export default function InfiniteScrollGrid({ initialGames }: InfiniteScrollGridP
       if (playerFilter === '2player' && !hasLocalTwoPlayer) return false
       if (playerFilter === 'online' && !isMultiplayerCat) return false
       
-      // 2. Play Duration Filter
       const categoriesSlugs = game.categories?.map((c: any) => c.slug) || []
       const isIdle = categoriesSlugs.includes('idle') || categoriesSlugs.includes('simulation') || game.slug.includes('clicker')
       const isRacerOrMulti = categoriesSlugs.includes('racing') || categoriesSlugs.includes('multiplayer')
@@ -69,29 +66,6 @@ export default function InfiniteScrollGrid({ initialGames }: InfiniteScrollGridP
       setLoading(false)
     }, 400)
   }, [displayedGames.length, getFilteredGames])
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0]
-        if (first.isIntersecting && hasMore && !loading) {
-          loadMore()
-        }
-      },
-      { threshold: 0.1 }
-    )
-
-    const currentLoader = loaderRef.current
-    if (currentLoader) {
-      observer.observe(currentLoader)
-    }
-
-    return () => {
-      if (currentLoader) {
-        observer.unobserve(currentLoader)
-      }
-    }
-  }, [displayedGames, hasMore, loading, loadMore])
 
   return (
     <div className="flex flex-col gap-6">
@@ -231,16 +205,26 @@ export default function InfiniteScrollGrid({ initialGames }: InfiniteScrollGridP
         </div>
       )}
 
-      {/* Infinite Scroll Sentinel element */}
+      {/* Manual Load More Button */}
       {hasMore && (
-        <div
-          ref={loaderRef}
-          className="w-full py-8 flex items-center justify-center"
-        >
-          <div className="flex items-center gap-2 text-primary font-semibold text-sm glass px-4 py-2 rounded-full border border-primary/20 shadow-lg">
-            <Loader2 className="h-4.5 w-4.5 animate-spin" />
-            <span>Buffering more games...</span>
-          </div>
+        <div className="w-full flex items-center justify-center pt-2 pb-4">
+          <button
+            onClick={loadMore}
+            disabled={loading}
+            className="flex items-center gap-2 px-8 py-3 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-sm tracking-wider uppercase hover:bg-primary/20 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading...</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4" />
+                <span>Load More Games</span>
+              </>
+            )}
+          </button>
         </div>
       )}
     </div>
