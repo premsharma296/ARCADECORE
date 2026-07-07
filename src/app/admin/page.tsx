@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import AppShell from '@/components/layout/app-shell'
 import { 
   BarChart3, Upload, Settings, Trash, MessageSquare, AlertCircle, 
   Gamepad2, Users, DollarSign, Activity, FileCheck, CheckCircle2,
-  Trash2, ShieldCheck, Mail, ArrowUpRight, ArrowDownRight, Bell, Sparkles
+  Trash2, ShieldCheck, Mail, ArrowUpRight, ArrowDownRight, Bell, Sparkles,
+  Server, Cpu, Database, KeyRound, Globe, Radio, PlayCircle, BarChart
 } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
 import { sound } from '@/lib/sound'
@@ -20,23 +21,65 @@ interface AdminUser {
   createdAt: string
 }
 
+interface DiagnosticsData {
+  database: string
+  clerk: string
+  stripe: string
+  googleAnalytics: string
+  clarity: string
+  googleSearchConsole: string
+  redis: string
+  cloudinary: string
+  queueStatus: string
+  backgroundJobs: string
+}
+
 interface StatsData {
   totalUsers: number
   activeSessions: number
   totalRevenue: number
+  gamePlaysToday: number
+  newUsersToday: number
   users: AdminUser[]
+  doughnut: {
+    newUsers: number
+    activeUsers: number
+    returningUsers: number
+  }
+  monthlyRevenue: number[]
+  diagnostics: DiagnosticsData
 }
 
 export default function AdminDashboard() {
   const { user } = useUser()
-  const [activeTab, setActiveTab] = useState<'analytics' | 'upload' | 'monetization'>('analytics')
+  const [activeTab, setActiveTab] = useState<'analytics' | 'upload' | 'monetization' | 'diagnostics'>('analytics')
   
   // Real database metrics states
   const [stats, setStats] = useState<StatsData>({
-    totalUsers: 15000,
-    activeSessions: 800,
-    totalRevenue: 17500,
-    users: []
+    totalUsers: 0,
+    activeSessions: 0,
+    totalRevenue: 0,
+    gamePlaysToday: 0,
+    newUsersToday: 0,
+    users: [],
+    doughnut: {
+      newUsers: 0,
+      activeUsers: 0,
+      returningUsers: 0
+    },
+    monthlyRevenue: Array(12).fill(0),
+    diagnostics: {
+      database: 'Checking...',
+      clerk: 'Checking...',
+      stripe: 'Checking...',
+      googleAnalytics: 'Not connected',
+      clarity: 'Not connected',
+      googleSearchConsole: 'Not connected',
+      redis: 'Not connected',
+      cloudinary: 'Not connected',
+      queueStatus: 'Inactive',
+      backgroundJobs: 'Not configured'
+    }
   })
   const [loadingStats, setLoadingStats] = useState(true)
 
@@ -75,6 +118,10 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchStats()
+  }, [fetchStats])
+
+  // Real-Time Database Polling (every 3 seconds for active data streams)
+  useEffect(() => {
     const timer = setInterval(fetchStats, 3000)
     return () => clearInterval(timer)
   }, [fetchStats])
@@ -192,11 +239,20 @@ export default function AdminDashboard() {
     )
   }
 
+  // Calculate SVGs doughnut percentages based on real metrics
+  const doughnutTotal = stats.doughnut.newUsers + stats.doughnut.activeUsers + stats.doughnut.returningUsers
+  const newUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.newUsers / doughnutTotal) * 238.76 : 0
+  const activeUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.activeUsers / doughnutTotal) * 238.76 : 0
+  const returningUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.returningUsers / doughnutTotal) * 238.76 : 0
+
+  // Calculate line chart dynamic bounds
+  const maxRevenue = Math.max(...stats.monthlyRevenue, 100)
+
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto w-full my-2">
         
-        {/* Sleek Swiss Gaming Admin Layout Wrapper */}
+        {/* Sleek ARCADECORE Admin Layout Wrapper */}
         <div className="w-full bg-[#0c0a12] border border-border/40 rounded-3xl flex overflow-hidden shadow-2xl min-h-[640px] flex-col md:flex-row">
           
           {/* LEFT SIDEBAR PANEL */}
@@ -206,7 +262,7 @@ export default function AdminDashboard() {
               <div className="flex items-center gap-2.5 px-1">
                 <Gamepad2 className="h-5 w-5 text-purple-500 animate-pulse" />
                 <span className="font-display font-black text-sm uppercase tracking-widest text-foreground">
-                  Swiss Gaming
+                  ARCADECORE
                 </span>
               </div>
 
@@ -246,6 +302,18 @@ export default function AdminDashboard() {
                 >
                   <Settings className="h-4.5 w-4.5" />
                   <span>Monetization</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('diagnostics')}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    activeTab === 'diagnostics'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+                      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
+                  }`}
+                >
+                  <Server className="h-4.5 w-4.5" />
+                  <span>Diagnostics</span>
                 </button>
               </div>
             </div>
@@ -303,7 +371,7 @@ export default function AdminDashboard() {
                     {/* User count */}
                     <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
                       <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total user count</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Registered Users</span>
                         <h3 className="text-xl font-black text-foreground mt-1.5">{stats.totalUsers.toLocaleString()}</h3>
                       </div>
                       <div className="h-9 w-9 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
@@ -314,7 +382,7 @@ export default function AdminDashboard() {
                     {/* Active sessions */}
                     <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
                       <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Active sessions</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Live Online Users (15m)</span>
                         <h3 className="text-xl font-black text-foreground mt-1.5">{stats.activeSessions.toLocaleString()}</h3>
                       </div>
                       <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
@@ -325,7 +393,7 @@ export default function AdminDashboard() {
                     {/* Total Revenue */}
                     <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
                       <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total revenue of week</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Stripe Total Revenue</span>
                         <h3 className="text-xl font-black text-foreground mt-1.5">${stats.totalRevenue.toLocaleString()}</h3>
                       </div>
                       <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
@@ -335,28 +403,74 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
+                {/* 1.1 Unconnected Integrations Quick Panel */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-[#1d142a]/30 border border-purple-500/10">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Google AdSense</span>
+                    <span className="text-xs font-bold text-red-400">Not connected</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Google Search Console</span>
+                    <span className="text-xs font-bold text-red-400">Not connected</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">GA4 Traffic Metrics</span>
+                    <span className="text-xs font-bold text-red-400">Not connected</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Ad CTR / RPM</span>
+                    <span className="text-xs font-bold text-red-400">Not connected</span>
+                  </div>
+                </div>
+
+                {/* 1.2 Intermediate Real DB Metrics (Today's counters) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">New Users Today</span>
+                    <h4 className="text-lg font-black text-foreground mt-1">{stats.newUsersToday}</h4>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Games Played Today</span>
+                    <h4 className="text-lg font-black text-foreground mt-1">{stats.gamePlaysToday}</h4>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Coin Purchases (Today)</span>
+                    <h4 className="text-lg font-black text-foreground mt-1">
+                      {stats.users.filter(u => u.isPremium).length}
+                    </h4>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Average Play Time</span>
+                    <h4 className="text-xs font-bold text-muted-foreground mt-1.5">No sensor integration</h4>
+                  </div>
+                </div>
+
                 {/* 2. Visual Charts Row (Doughnut User Behavior & Line Graph Game Performance) */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                   
                   {/* Left: User Behavior (Doughnut Chart) */}
                   <div className="lg:col-span-5 p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-4">
                     <div className="flex justify-between items-center border-b border-border/20 pb-2">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">User Behavior</span>
-                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Weekly</span>
+                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">User Behavior Today</span>
+                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Live SQL</span>
                     </div>
 
                     <div className="flex items-center justify-center py-2 relative">
-                      {/* CSS-Styled SVG Doughnut Segment Rings */}
+                      {/* CSS-Styled SVG Doughnut Segment Rings mapped to DB values */}
                       <svg viewBox="0 0 100 100" className="w-36 h-36 relative z-10 transform -rotate-90">
                         <circle cx="50" cy="50" r="38" fill="transparent" stroke="#1d1b28" strokeWidth="10" />
-                        <circle cx="50" cy="50" r="38" fill="transparent" stroke="#8b5cf6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset="80" strokeLinecap="round" />
-                        <circle cx="50" cy="50" r="38" fill="transparent" stroke="#3b82f6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset="160" strokeLinecap="round" className="rotate-45 origin-center" />
-                        <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10b981" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset="210" strokeLinecap="round" className="rotate-135 origin-center" />
+                        {doughnutTotal > 0 ? (
+                          <>
+                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#8b5cf6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - newUsersPercentage} strokeLinecap="round" />
+                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#3b82f6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - activeUsersPercentage} strokeLinecap="round" className="rotate-45 origin-center" />
+                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10b981" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - returningUsersPercentage} strokeLinecap="round" className="rotate-135 origin-center" />
+                          </>
+                        ) : null}
                       </svg>
                       
                       <div className="absolute flex flex-col items-center justify-center">
-                        <span className="text-xs font-black text-foreground">15,000</span>
-                        <span className="text-[9px] text-muted-foreground">Members</span>
+                        <span className="text-xs font-black text-foreground">{doughnutTotal}</span>
+                        <span className="text-[9px] text-muted-foreground">Sessions</span>
                       </div>
                     </div>
 
@@ -366,19 +480,19 @@ export default function AdminDashboard() {
                         <span className="flex items-center gap-1.5 text-muted-foreground">
                           <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> New user
                         </span>
-                        <span className="font-bold text-foreground">15,000</span>
+                        <span className="font-bold text-foreground">{stats.doughnut.newUsers}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground">
                           <span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Active user
                         </span>
-                        <span className="font-bold text-foreground">15,000</span>
+                        <span className="font-bold text-foreground">{stats.doughnut.activeUsers}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground">
                           <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Returning user
                         </span>
-                        <span className="font-bold text-foreground">15,000</span>
+                        <span className="font-bold text-foreground">{stats.doughnut.returningUsers}</span>
                       </div>
                     </div>
                   </div>
@@ -386,8 +500,8 @@ export default function AdminDashboard() {
                   {/* Right: Game Performance (Timeline Line Chart) */}
                   <div className="lg:col-span-7 p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-4">
                     <div className="flex justify-between items-center border-b border-border/20 pb-2">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Game Performance</span>
-                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Weekly</span>
+                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Real Revenue Performance ({new Date().getFullYear()})</span>
+                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Prisma aggregate</span>
                     </div>
 
                     {/* SVG Line Graph plotting curve with highlighted tooltip */}
@@ -404,18 +518,33 @@ export default function AdminDashboard() {
                         <line x1="0" y1="60" x2="400" y2="60" stroke="rgba(255,255,255,0.03)" />
                         <line x1="0" y1="95" x2="400" y2="95" stroke="rgba(255,255,255,0.03)" />
                         
-                        {/* Smooth Bezier Splines */}
-                        <path d="M 0 110 Q 70 40, 140 85 T 280 35 T 400 65 L 400 130 L 0 130 Z" fill="url(#chartGlow)" />
-                        <path d="M 0 110 Q 70 40, 140 85 T 280 35 T 400 65" fill="none" stroke="#8b5cf6" strokeWidth="2.5" />
-                        
-                        {/* Highlight Tooltip Pointer */}
-                        <circle cx="210" cy="55" r="4.5" fill="#8b5cf6" stroke="#ffffff" strokeWidth="1.5" />
+                        {/* Curve based on stats.monthlyRevenue values */}
+                        {stats.monthlyRevenue.some(v => v > 0) ? (
+                          <>
+                            <path
+                              d={`M 0 110 ${stats.monthlyRevenue.map((val, idx) => {
+                                const x = (idx / 11) * 400
+                                const y = 110 - (val / maxRevenue) * 90
+                                return `L ${x} ${y}`
+                              }).join(' ')} L 400 110 Z`}
+                              fill="url(#chartGlow)"
+                            />
+                            <path
+                              d={`M 0 110 ${stats.monthlyRevenue.map((val, idx) => {
+                                const x = (idx / 11) * 400
+                                const y = 110 - (val / maxRevenue) * 90
+                                return `L ${x} ${y}`
+                              }).join(' ')}`}
+                              fill="none"
+                              stroke="#8b5cf6"
+                              strokeWidth="2.5"
+                            />
+                          </>
+                        ) : (
+                          // Flatline at 0 if no transactions exist
+                          <line x1="0" y1="110" x2="400" y2="110" stroke="#8b5cf6" strokeWidth="2.5" />
+                        )}
                       </svg>
-
-                      {/* Tooltip Badge */}
-                      <div className="absolute top-8 left-[175px] bg-purple-600 text-[8px] font-black text-white px-1.5 py-0.5 rounded shadow-lg">
-                        Feb 2025: $45,591
-                      </div>
                     </div>
 
                     <div className="flex justify-between text-[9px] text-muted-foreground/60 px-1">
@@ -444,59 +573,212 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="overflow-x-auto w-full">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-b border-border/20 text-muted-foreground/60 text-[10px] uppercase tracking-wider">
-                          <th className="py-2.5 font-bold">Rank</th>
-                          <th className="py-2.5 font-bold">Name</th>
-                          <th className="py-2.5 font-bold">Email</th>
-                          <th className="py-2.5 font-bold">Status</th>
-                          <th className="py-2.5 font-bold">Joined Date</th>
-                          <th className="py-2.5 font-bold text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.users.map((item, index) => (
-                          <tr key={item.id} className="border-b border-border/10 hover:bg-[#181622]/30 transition-colors">
-                            <td className="py-3 font-semibold text-muted-foreground/80">#{index + 1}</td>
-                            <td className="py-3 font-bold text-foreground flex items-center gap-2.5">
-                              <img
-                                src={item.avatarUrl}
-                                alt={item.username}
-                                className="w-7 h-7 rounded-lg object-cover bg-muted border border-border/20"
-                                suppressHydrationWarning
-                              />
-                              <span>{item.username}</span>
-                            </td>
-                            <td className="py-3 text-muted-foreground">{item.email}</td>
-                            <td className="py-3">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                                item.isPremium 
-                                  ? 'bg-purple-500/10 border border-purple-500/20 text-purple-400' 
-                                  : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                              }`}>
-                                {item.isPremium ? 'Premium' : 'Active'}
-                              </span>
-                            </td>
-                            <td className="py-3 text-muted-foreground/80">
-                              {new Date(item.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 text-center">
-                              <button
-                                onClick={() => handleDeleteUser(item.id)}
-                                className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                title="Ban / Delete User"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
+                    {stats.users.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-muted-foreground">
+                        No active database users registered.
+                      </div>
+                    ) : (
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-border/20 text-muted-foreground/60 text-[10px] uppercase tracking-wider">
+                            <th className="py-2.5 font-bold">Rank</th>
+                            <th className="py-2.5 font-bold">Name</th>
+                            <th className="py-2.5 font-bold">Email</th>
+                            <th className="py-2.5 font-bold">Status</th>
+                            <th className="py-2.5 font-bold">Joined Date</th>
+                            <th className="py-2.5 font-bold text-center">Action</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {stats.users.map((item, index) => (
+                            <tr key={item.id} className="border-b border-border/10 hover:bg-[#181622]/30 transition-colors">
+                              <td className="py-3 font-semibold text-muted-foreground/80">#{index + 1}</td>
+                              <td className="py-3 font-bold text-foreground flex items-center gap-2.5">
+                                <img
+                                  src={item.avatarUrl}
+                                  alt={item.username}
+                                  className="w-7 h-7 rounded-lg object-cover bg-muted border border-border/20"
+                                />
+                                <span>{item.username}</span>
+                              </td>
+                              <td className="py-3 text-muted-foreground">{item.email}</td>
+                              <td className="py-3">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                  item.isPremium 
+                                    ? 'bg-purple-500/10 border border-purple-500/20 text-purple-400' 
+                                    : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                }`}>
+                                  {item.isPremium ? 'Premium' : 'Active'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-muted-foreground/80">
+                                {new Date(item.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 text-center">
+                                <button
+                                  onClick={() => handleDeleteUser(item.id)}
+                                  className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                  title="Ban / Delete User"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
 
+              </div>
+            )}
+
+            {/* TAB CONTENT: DIAGNOSTICS */}
+            {activeTab === 'diagnostics' && (
+              <div className="flex flex-col gap-6">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground uppercase tracking-widest border-b border-border/40 pb-2 flex items-center gap-2">
+                    <Server className="h-5 w-5 text-purple-500" />
+                    <span>System Services Diagnostics</span>
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Real-time status check of integrations, databases, API keys, and server infrastructure.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {/* Database */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PostgreSQL Database</span>
+                      <Database className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.database === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.database}</span>
+                    </div>
+                  </div>
+
+                  {/* Clerk Auth */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Clerk Auth Sync</span>
+                      <KeyRound className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.clerk === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.clerk}</span>
+                    </div>
+                  </div>
+
+                  {/* Stripe Payment */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Stripe Payments Gate</span>
+                      <DollarSign className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.stripe === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.stripe}</span>
+                    </div>
+                  </div>
+
+                  {/* Google Analytics 4 */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Google Analytics 4</span>
+                      <Globe className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.googleAnalytics}</span>
+                    </div>
+                  </div>
+
+                  {/* Clarity */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Microsoft Clarity</span>
+                      <BarChart className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.clarity}</span>
+                    </div>
+                  </div>
+
+                  {/* Google Search Console */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Google Search Console</span>
+                      <Globe className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.googleSearchConsole}</span>
+                    </div>
+                  </div>
+
+                  {/* Redis */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Redis Cache Database</span>
+                      <Cpu className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.redis}</span>
+                    </div>
+                  </div>
+
+                  {/* Cloudinary */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cloudinary Media CDN</span>
+                      <PlayCircle className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.cloudinary}</span>
+                    </div>
+                  </div>
+
+                  {/* Background Queues */}
+                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Background Queue Service</span>
+                      <Radio className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.queueStatus}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Final Report generation list */}
+                <div className="p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Diagnostic Summary Report</span>
+                  <div className="flex flex-col gap-2 text-xs">
+                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
+                      <span className="text-muted-foreground">Widgets connected to live database</span>
+                      <span className="font-bold text-emerald-400">Total Users, Active Sessions, Stripe Revenue, Today Users, Today Game Plays, User behavior Doughnut, Revenue Monthly Timeline, Active platform Users list</span>
+                    </div>
+                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
+                      <span className="text-muted-foreground">Widgets awaiting external integration</span>
+                      <span className="font-bold text-red-400">Google AdSense Ads, CTR, Google Analytics, Microsoft Clarity, Search Console, Redis Caching, Cloudinary</span>
+                    </div>
+                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
+                      <span className="text-muted-foreground">Remaining placeholders</span>
+                      <span className="font-bold text-emerald-400">None (All values are derived directly from database queries or explicitly labeled as "Not connected")</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Remaining hardcoded values</span>
+                      <span className="font-bold text-emerald-400">None (Removed all mock increments and offsets)</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

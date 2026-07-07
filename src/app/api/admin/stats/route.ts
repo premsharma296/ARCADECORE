@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server'
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { currentUser } from '@clerk/nextjs/server'
 import db from '@/lib/db'
 
 // Check admin role helper
@@ -20,103 +20,139 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // 1. Fetch real database user count and live metrics
-    let dbUserCount = 0
-    let dbUsersList: any[] = []
-    let liveSessionsCount = 0
-    let dbRevenueSum = 0
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
 
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+
+    // 1. Database Queries - Strictly Real (No offsets, no hardcoded values)
+    let totalUsers = 0
+    let activeSessions = 0
+    let totalRevenue = 0
+    let gamePlaysToday = 0
+    let newUsersToday = 0
+    let usersList: any[] = []
+
+    // Doughnut chart metrics
+    let doughnutNew = 0
+    let doughnutActive = 0
+    let doughnutReturning = 0
+
+    // Monthly chart data (12 values)
+    const monthlyRevenue = Array(12).fill(0)
+
+    // Diagnostic flags
+    let dbConnected = false
     try {
-      dbUserCount = await db.user.count()
-      dbUsersList = await db.user.findMany({
-        take: 15,
-        orderBy: { createdAt: 'desc' }
+      // Simple ping to verify connection
+      await db.$queryRaw`SELECT 1`
+      dbConnected = true
+
+      // Run aggregations
+      totalUsers = await db.user.count()
+      activeSessions = await db.livePlayer.count({
+        where: { lastSeen: { gte: fifteenMinsAgo } }
       })
       
-      // Query active live players inside the last 15 minutes
-      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
-      liveSessionsCount = await db.livePlayer.count({
-        where: {
-          lastSeen: { gte: fifteenMinsAgo }
-        }
-      })
-
-      // Query total completed transaction aggregates
-      const revenueAgg = await db.transaction.aggregate({
+      const revAgg = await db.transaction.aggregate({
         _sum: { amount: true },
         where: { status: 'SUCCESS' }
       })
-      dbRevenueSum = revenueAgg._sum.amount || 0
+      totalRevenue = revAgg._sum.amount || 0
+
+      gamePlaysToday = await db.gamePlay.count({
+        where: { createdAt: { gte: startOfToday } }
+      })
+
+      newUsersToday = await db.user.count({
+        where: { createdAt: { gte: startOfToday } }
+      })
+
+      // Fetch actual users list
+      const dbUsers = await db.user.findMany({
+        take: 15,
+        orderBy: { createdAt: 'desc' }
+      })
+      usersList = dbUsers.map(u => ({
+        id: u.id,
+        username: u.username || 'ArcadePlayer',
+        email: u.email,
+        avatarUrl: u.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40',
+        isPremium: u.isPremium,
+        createdAt: u.createdAt.toISOString()
+      }))
+
+      // Doughnut calculations
+      doughnutNew = await db.user.count({
+        where: { createdAt: { gte: startOfToday } }
+      })
+      
+      // Active users (unique players today)
+      const playedTodayList = await db.gamePlay.findMany({
+        where: { createdAt: { gte: startOfToday } },
+        select: { userId: true }
+      })
+      const uniqueUserIds = Array.from(new Set(playedTodayList.map(p => p.userId)))
+      doughnutActive = uniqueUserIds.length
+
+      // Returning users (registered before today, played today)
+      const returningUserCount = await db.user.count({
+        where: {
+          id: { in: uniqueUserIds },
+          createdAt: { lt: startOfToday }
+        }
+      })
+      doughnutReturning = returningUserCount
+
+      // Monthly revenue aggregation
+      const startOfYear = new Date(new Date().getFullYear(), 0, 1)
+      const txs = await db.transaction.findMany({
+        where: {
+          status: 'SUCCESS',
+          createdAt: { gte: startOfYear }
+        },
+        select: {
+          amount: true,
+          createdAt: true
+        }
+      })
+      txs.forEach(t => {
+        const month = t.createdAt.getMonth()
+        monthlyRevenue[month] += t.amount
+      })
+
     } catch (e) {
-      console.log('Postgres queries failing/initializing, using fallbacks')
+      console.error('Postgres database aggregation failed:', e)
     }
 
-    // 2. Format final statistics combining cloud data + baseline values
-    const totalUsers = 15000 + dbUserCount
-    const activeSessions = 800 + liveSessionsCount
-    const totalRevenue = 17500 + dbRevenueSum
-
-    // Match Dribbble default user list and append actual database users at the top
-    const mockUsers = [
-      {
-        id: 'mock-1',
-        username: 'Annette Black',
-        email: 'gamxxxx@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=40&auto=format&fit=crop',
-        isPremium: true,
-        createdAt: new Date('2025-01-01T00:00:00Z')
-      },
-      {
-        id: 'mock-2',
-        username: 'Bessie Cooper',
-        email: 'gamxxxx@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=40&auto=format&fit=crop',
-        isPremium: false,
-        createdAt: new Date('2025-01-01T00:00:00Z')
-      },
-      {
-        id: 'mock-3',
-        username: 'Kathryn Murphy',
-        email: 'gamxxxx@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=40&auto=format&fit=crop',
-        isPremium: true,
-        createdAt: new Date('2025-01-01T00:00:00Z')
-      },
-      {
-        id: 'mock-4',
-        username: 'Guy Hawkins',
-        email: 'gamxxxx@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=40&auto=format&fit=crop',
-        isPremium: false,
-        createdAt: new Date('2025-01-01T00:00:00Z')
-      },
-      {
-        id: 'mock-5',
-        username: 'Jacob Jones',
-        email: 'gamxxxx@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=40&auto=format&fit=crop',
-        isPremium: true,
-        createdAt: new Date('2025-01-01T00:00:00Z')
-      }
-    ]
-
-    // Map DB users to fit listing formats
-    const formattedDbUsers = dbUsersList.map(u => ({
-      id: u.id,
-      username: u.username || 'ArcadePlayer',
-      email: u.email,
-      avatarUrl: u.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40',
-      isPremium: u.isPremium,
-      createdAt: u.createdAt
-    }))
-
-    const combinedUsers = [...formattedDbUsers, ...mockUsers]
+    // Diagnostics checks
+    const diagnostics = {
+      database: dbConnected ? 'Connected' : 'Error',
+      clerk: process.env.CLERK_SECRET_KEY ? 'Connected' : 'Not connected',
+      stripe: process.env.STRIPE_SECRET_KEY ? 'Connected' : 'Not connected',
+      googleAnalytics: 'Not connected',
+      clarity: 'Not connected',
+      googleSearchConsole: 'Not connected',
+      redis: 'Not connected',
+      cloudinary: 'Not connected',
+      queueStatus: 'Inactive',
+      backgroundJobs: 'Not configured'
+    }
 
     return NextResponse.json({
       totalUsers,
       activeSessions,
       totalRevenue,
-      users: combinedUsers
+      gamePlaysToday,
+      newUsersToday,
+      users: usersList,
+      doughnut: {
+        newUsers: doughnutNew,
+        activeUsers: doughnutActive,
+        returningUsers: doughnutReturning
+      },
+      monthlyRevenue,
+      diagnostics
     })
   } catch (error: any) {
     console.error('Stats API Error:', error)
@@ -138,16 +174,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing user ID' }, { status: 400 })
     }
 
-    if (userId.startsWith('mock-')) {
-      // Mock delete success
-      return NextResponse.json({ success: true, message: 'Mock user removed temporarily' })
-    }
-
     try {
       await db.user.delete({
         where: { id: userId }
       })
-      return NextResponse.json({ success: true, message: 'User deleted persistently from PostgreSQL database' })
+      return NextResponse.json({ success: true, message: 'User deleted persistently from PostgreSQL' })
     } catch {
       return NextResponse.json({ error: 'Database record not found or dependency constraints active' }, { status: 404 })
     }
