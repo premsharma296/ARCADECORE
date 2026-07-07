@@ -1,14 +1,15 @@
 import db from '../src/lib/db'
 
-async function fixSnakeUrl() {
+async function updateSnakeBanner() {
   try {
     await db.game.update({
       where: { slug: 'snake-game' },
       data: {
-        iframeUrl: '/game-files/snake-game/index.html'
+        bannerUrl: '/game-files/snake-game/banner.jpg',
+        thumbnailUrl: '/game-files/snake-game/banner.jpg',
       }
     })
-    console.log('✅ Updated iframeUrl to /game-files/snake-game/index.html')
+    console.log('✅ Updated Spike Snake banner and thumbnail to use the generated banner image')
   } catch (e: any) {
     console.error('❌ Error:', e.message)
   } finally {
@@ -16,4 +17,4 @@ async function fixSnakeUrl() {
   }
 }
 
-fixSnakeUrl()
+updateSnakeBanner()
