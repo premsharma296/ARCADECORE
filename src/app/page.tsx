@@ -6,6 +6,7 @@ import GameCard from '@/components/game/game-card'
 import ContinuePlayingGrid from '@/components/game/continue-playing-grid'
 import InfiniteScrollGrid from '@/components/game/infinite-scroll-grid'
 import LiveSidebar from '@/components/realtime/live-sidebar'
+import SpikeSnakeSpotlight from '@/components/game/spike-snake-spotlight'
 import { getFullMockCatalog } from '@/lib/fallback-data'
 import { Flame, Star, Sparkles } from 'lucide-react'
 
@@ -50,6 +51,11 @@ export default async function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative">
         {/* Main Content (Left: 9 columns) */}
         <div className="lg:col-span-9 flex flex-col gap-10">
+
+          {/* 🐍 SPIKE SNAKE — Premium Featured Spotlight */}
+          <section aria-label="Featured: Spike Snake">
+            <SpikeSnakeSpotlight />
+          </section>
           
           {/* 1. Hero Showcase Carousel */}
           <section aria-label="Featured Games">
