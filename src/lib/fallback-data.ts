@@ -118,6 +118,26 @@ export const FALLBACK_GAMES: MockGame[] = [
     screenshots: [
       'https://images.unsplash.com/photo-1621761191319-c6fb62004040?q=80&w=500&auto=format&fit=crop'
     ]
+  },
+  {
+    id: '6',
+    title: 'Neon Showdown Online',
+    slug: 'neon-showdown',
+    description: 'An advanced real-time multiplayer neon tank battle game. Establish low-latency WebRTC peer connections or play split-screen co-op. Move, aim, fire, and outsmart your rival!',
+    instructions: 'Controls: Local Co-op uses WASD/Arrows. Online PvP establishes zero-latency WebRTC direct peer links. Fire bullets to decrease the rival tank health.',
+    controls: 'Player 1: WASD keys to steer tank. Q / E : Rotate Turret. Space : Shoot Projectile.\nPlayer 2: Arrow keys to steer tank. Slash / Period : Rotate Turret. Enter : Shoot Projectile.',
+    iframeUrl: '/games/neon-showdown',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=400&auto=format&fit=crop',
+    bannerUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=1200&auto=format&fit=crop',
+    playCount: 1250,
+    rating: 4.9,
+    isFeatured: true,
+    isSponsored: false,
+    categories: [{ name: 'Multiplayer', slug: 'multiplayer' }, { name: 'Action', slug: 'action' }, { name: 'Arcade', slug: 'arcade' }],
+    tags: [{ name: 'Neon', slug: 'neon' }, { name: 'Physics', slug: 'physics' }],
+    screenshots: [
+      'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=500&auto=format&fit=crop'
+    ]
   }
 ]
 
