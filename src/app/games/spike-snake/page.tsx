@@ -19,6 +19,7 @@ interface FoodPellet {
   y: number
   color: string
   value: number
+  size: number
 }
 
 interface Skin {
@@ -26,14 +27,20 @@ interface Skin {
   name: string
   color: string
   glowColor: string
+  darkColor: string
 }
 
 const SKINS: Skin[] = [
-  { id: 'classic-green', name: 'Classic Green', color: '#22c55e', glowColor: 'rgba(34,197,94,0.6)' },
-  { id: 'retro-pink', name: 'Neon Retro Pink', color: '#ec4899', glowColor: 'rgba(236,72,153,0.6)' },
-  { id: 'cyan-hacker', name: 'Cyan Hacker', color: '#06b6d4', glowColor: 'rgba(6,182,212,0.6)' },
-  { id: 'gold-champion', name: 'Cosmic Gold', color: '#eab308', glowColor: 'rgba(234,179,8,0.6)' }
+  { id: 'classic-green', name: 'Classic Green', color: '#22c55e', glowColor: 'rgba(34,197,94,0.6)', darkColor: '#14532d' },
+  { id: 'retro-pink', name: 'Neon Retro Pink', color: '#ec4899', glowColor: 'rgba(236,72,153,0.6)', darkColor: '#500724' },
+  { id: 'cyan-hacker', name: 'Cyan Hacker', color: '#06b6d4', glowColor: 'rgba(6,182,212,0.6)', darkColor: '#164e63' },
+  { id: 'gold-champion', name: 'Cosmic Gold', color: '#eab308', glowColor: 'rgba(234,179,8,0.6)', darkColor: '#451a03' }
 ]
+
+// Arena Map Constants
+const MAP_WIDTH = 2400
+const MAP_HEIGHT = 1600
+const SEGMENT_SPACING = 7.2 // Distance between follow segments
 
 export default function SpikeSnakeGame() {
   const { user, isSignedIn } = useUser()
@@ -68,6 +75,9 @@ export default function SpikeSnakeGame() {
   const keysPressedRef = useRef<{ [key: string]: boolean }>({})
   const gameSubModeRef = useRef<'single' | 'local' | 'online'>('single')
 
+  // Mouse steer reference
+  const mousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+
   // Game Entities (ref-based for instant access in canvas loop)
   const snake1Ref = useRef<SnakeSegment[]>([])
   const angle1Ref = useRef<number>(0)
@@ -79,11 +89,11 @@ export default function SpikeSnakeGame() {
   const targetAngle2Ref = useRef<number>(0)
   const speed2Ref = useRef<number>(3)
 
-  const aiSnakesRef = useRef<{ id: string; name: string; color: string; segments: SnakeSegment[]; angle: number; speed: number }[]>([])
+  const aiSnakesRef = useRef<{ id: string; name: string; color: string; darkColor: string; segments: SnakeSegment[]; angle: number; speed: number }[]>([])
   const foodRef = useRef<FoodPellet[]>([])
   const particlesRef = useRef<{ x: number; y: number; vx: number; vy: number; color: string; alpha: number; size: number }[]>([])
 
-  // Setup canvas size & inputs
+  // Setup inputs and mouse trackers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressedRef.current[e.key] = true
@@ -92,26 +102,38 @@ export default function SpikeSnakeGame() {
       keysPressedRef.current[e.key] = false
     }
 
+    const handleMouseMove = (e: MouseEvent) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      // Mouse coordinate relative to canvas center (since camera follows snake 1)
+      mousePosRef.current = {
+        x: e.clientX - rect.left - rect.width / 2,
+        y: e.clientY - rect.top - rect.height / 2
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('mousemove', handleMouseMove)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('mousemove', handleMouseMove)
       cleanupWebRTC()
       if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current)
     }
   }, [])
 
-  // WebRTC data channel message parsing
+  // WebRTC signaling and messaging
   const setupDataChannel = (channel: RTCDataChannel) => {
     dataChannelRef.current = channel
     channel.onopen = () => {
       setConnectionStatus('connected')
-      setChatLog((prev) => [...prev, 'System: P2P Match Connection Established!'])
+      setChatLog((prev) => [...prev, 'System: WebRTC Peer Connection Established!'])
       try { sound.playTick() } catch {}
       
-      // If host, start the game immediately
       if (onlineRole === 'host') {
         setTimeout(() => {
           startGame('online')
@@ -129,15 +151,12 @@ export default function SpikeSnakeGame() {
           setGameOver(false)
           setWinnerMessage('')
         } else if (msg.type === 'snake') {
-          // Received guest snake position
           snake2Ref.current = msg.segments
           angle2Ref.current = msg.angle
         } else if (msg.type === 'sync') {
-          // Guest receives full host state sync
           snake1Ref.current = msg.hostSnake
           angle1Ref.current = msg.hostAngle
           foodRef.current = msg.food
-          // Sync score
           setScore(msg.guestScore)
           setRivalScore(msg.hostScore)
         } else if (msg.type === 'gameover') {
@@ -165,7 +184,6 @@ export default function SpikeSnakeGame() {
     setRoomCode('')
   }
 
-  // Create WebRTC Host Lobby
   const createHostLobby = async () => {
     cleanupWebRTC()
     setConnectionStatus('creating')
@@ -209,7 +227,6 @@ export default function SpikeSnakeGame() {
       setRoomCode(generatedCode)
       setConnectionStatus('waiting')
 
-      // Listen for ICE candidates again with the newly generated code
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           fetch('/api/realtime/signaling', {
@@ -257,7 +274,6 @@ export default function SpikeSnakeGame() {
     }
   }
 
-  // Join WebRTC Guest Lobby
   const joinGuestLobby = async () => {
     if (!inputCode.trim()) {
       setErrorMsg('Please enter a valid room code')
@@ -341,7 +357,6 @@ export default function SpikeSnakeGame() {
     }
   }
 
-  // Send lobby chat
   const sendLobbyChat = () => {
     if (!chatInput.trim()) return
     const msg = `${user?.username || 'Player'}: ${chatInput}`
@@ -353,67 +368,76 @@ export default function SpikeSnakeGame() {
     setChatInput('')
   }
 
-  // Generate starting entities
+  // Generate starting entities with realistic physics positioning
   const generateStartingSnakes = () => {
-    // P1
+    // Player 1 (Starts Left-Center)
     snake1Ref.current = []
-    const startX1 = 200, startY1 = 300
-    for (let i = 0; i < 15; i++) {
-      snake1Ref.current.push({ x: startX1 - i * 8, y: startY1 })
+    const startX1 = MAP_WIDTH * 0.25
+    const startY1 = MAP_HEIGHT * 0.5
+    for (let i = 0; i < 20; i++) {
+      snake1Ref.current.push({ x: startX1 - i * SEGMENT_SPACING, y: startY1 })
     }
     angle1Ref.current = 0
     targetAngle1Ref.current = 0
-    speed1Ref.current = 3
+    speed1Ref.current = 3.2
 
-    // P2 / Rival
+    // Player 2 / Online Guest (Starts Right-Center)
     snake2Ref.current = []
-    const startX2 = 600, startY2 = 300
-    for (let i = 0; i < 15; i++) {
-      snake2Ref.current.push({ x: startX2 + i * 8, y: startY2 })
+    const startX2 = MAP_WIDTH * 0.75
+    const startY2 = MAP_HEIGHT * 0.5
+    for (let i = 0; i < 20; i++) {
+      snake2Ref.current.push({ x: startX2 + i * SEGMENT_SPACING, y: startY2 })
     }
     angle2Ref.current = Math.PI
     targetAngle2Ref.current = Math.PI
-    speed2Ref.current = 3
+    speed2Ref.current = 3.2
 
-    // AI
+    // AI snakes
     aiSnakesRef.current = []
-    if (activeMode === 'single') {
-      const colors = ['#a855f7', '#f43f5e', '#3b82f6']
-      for (let k = 0; k < 3; k++) {
-        const startX = 100 + Math.random() * 600
-        const startY = 100 + Math.random() * 400
+    if (gameSubModeRef.current === 'single') {
+      const colors = [
+        { main: '#a855f7', dark: '#3b0764' },
+        { main: '#f43f5e', dark: '#4c0519' },
+        { main: '#3b82f6', dark: '#172554' },
+        { main: '#10b981', dark: '#022c22' }
+      ]
+      for (let k = 0; k < 6; k++) {
+        const startX = 200 + Math.random() * (MAP_WIDTH - 400)
+        const startY = 200 + Math.random() * (MAP_HEIGHT - 400)
         const segments: SnakeSegment[] = []
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 15; i++) {
           segments.push({ x: startX, y: startY })
         }
+        const col = colors[k % colors.length]
         aiSnakesRef.current.push({
           id: `ai-${k}`,
-          name: `AI Slasher ${k + 1}`,
-          color: colors[k],
+          name: `Cyber Predator ${k + 1}`,
+          color: col.main,
+          darkColor: col.dark,
           segments,
           angle: Math.random() * Math.PI * 2,
-          speed: 2.2
+          speed: 2.5
         })
       }
     }
 
-    // Food
+    // Glowing Neon Food pellets
     foodRef.current = []
     const colors = ['#22c55e', '#ec4899', '#06b6d4', '#eab308', '#a855f7']
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
       foodRef.current.push({
         id: `food-${i}`,
-        x: Math.random() * 1200,
-        y: Math.random() * 800,
+        x: 50 + Math.random() * (MAP_WIDTH - 100),
+        y: 50 + Math.random() * (MAP_HEIGHT - 100),
         color: colors[Math.floor(Math.random() * colors.length)],
-        value: 1
+        value: 1,
+        size: Math.random() * 3 + 2.5
       })
     }
 
     particlesRef.current = []
   }
 
-  // Claim Reward database handler
   const claimCoinReward = async () => {
     if (!isSignedIn) return
     try {
@@ -430,14 +454,13 @@ export default function SpikeSnakeGame() {
     } catch {}
   }
 
-  // Start the actual game loop
   const startGame = (mode: 'single' | 'local' | 'online') => {
     gameSubModeRef.current = mode
     generateStartingSnakes()
     setGameOver(false)
     setWinnerMessage('')
-    setScore(15)
-    setRivalScore(15)
+    setScore(20)
+    setRivalScore(20)
 
     if (mode === 'online' && onlineRole === 'host') {
       if (dataChannelRef.current?.readyState === 'open') {
@@ -452,6 +475,35 @@ export default function SpikeSnakeGame() {
     gameLoopRef.current = requestAnimationFrame(gameLoop)
   }
 
+  // Realistic physics follow loop calculation
+  const updateSnakePhysics = (segments: SnakeSegment[], angle: number, speed: number) => {
+    if (segments.length === 0) return
+
+    // 1. Move the head segment
+    const head = segments[0]
+    head.x += Math.cos(angle) * speed
+    head.y += Math.sin(angle) * speed
+
+    // Clamp head inside arena bounds
+    head.x = Math.max(12, Math.min(MAP_WIDTH - 12, head.x))
+    head.y = Math.max(12, Math.min(MAP_HEIGHT - 12, head.y))
+
+    // 2. Drag segments sequentially using standard Slither.io string distance constraints
+    for (let i = 1; i < segments.length; i++) {
+      const prev = segments[i - 1]
+      const curr = segments[i]
+      const dx = prev.x - curr.x
+      const dy = prev.y - curr.y
+      const dist = Math.hypot(dx, dy)
+      
+      if (dist > SEGMENT_SPACING) {
+        const followAngle = Math.atan2(dy, dx)
+        curr.x = prev.x - Math.cos(followAngle) * SEGMENT_SPACING
+        curr.y = prev.y - Math.sin(followAngle) * SEGMENT_SPACING
+      }
+    }
+  }
+
   // Game Loop logic
   const gameLoop = () => {
     const canvas = canvasRef.current
@@ -459,102 +511,137 @@ export default function SpikeSnakeGame() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Clean viewport
-    ctx.fillStyle = '#09090b'
+    // 1. Setup Camera system centering on Player 1
+    const p1Head = snake1Ref.current[0]
+    const p2Head = snake2Ref.current[0]
+
+    // Default target for camera coordinates
+    let targetCamX = 0
+    let targetCamY = 0
+
+    if (p1Head) {
+      targetCamX = p1Head.x - canvas.width / 2
+      targetCamY = p1Head.y - canvas.height / 2
+    } else if (p2Head) {
+      targetCamX = p2Head.x - canvas.width / 2
+      targetCamY = p2Head.y - canvas.height / 2
+    }
+
+    // Clamp camera within map coordinates
+    const camX = Math.max(0, Math.min(MAP_WIDTH - canvas.width, targetCamX))
+    const camY = Math.max(0, Math.min(MAP_HEIGHT - canvas.height, targetCamY))
+
+    // Clean canvas viewport
+    ctx.fillStyle = '#07070a'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // 1. Draw Hexagonal Grid background
-    ctx.strokeStyle = '#18181b'
+    // 2. Draw arena grid system relative to camera
+    ctx.strokeStyle = '#12121e'
     ctx.lineWidth = 1
-    const size = 30
-    for (let y = 0; y < canvas.height; y += size * 1.5) {
-      for (let x = 0; x < canvas.width; x += size * Math.sqrt(3)) {
+    const size = 38
+    
+    // Draw hex pattern background offset by camera
+    const startGridX = Math.floor(camX / (size * Math.sqrt(3))) * (size * Math.sqrt(3))
+    const startGridY = Math.floor(camY / (size * 1.5)) * (size * 1.5)
+
+    for (let y = startGridY - size * 3; y < startGridY + canvas.height + size * 3; y += size * 1.5) {
+      for (let x = startGridX - size * 3; x < startGridX + canvas.width + size * 3; x += size * Math.sqrt(3)) {
         ctx.beginPath()
         for (let i = 0; i < 6; i++) {
           const angle = (i * Math.PI) / 3
-          ctx.lineTo(
-            x + (y % (size * 3) === 0 ? 0 : (size * Math.sqrt(3)) / 2) + size * Math.cos(angle),
-            y + size * Math.sin(angle)
-          )
+          const worldHexX = x + (y % (size * 3) === 0 ? 0 : (size * Math.sqrt(3)) / 2) + size * Math.cos(angle)
+          const worldHexY = y + size * Math.sin(angle)
+          
+          ctx.lineTo(worldHexX - camX, worldHexY - camY)
         }
         ctx.closePath()
         ctx.stroke()
       }
     }
 
-    // 2. Steer Player 1
-    const head1 = snake1Ref.current[0]
-    if (head1) {
-      // Local or Host keyboard steer
-      if (activeMode === 'playing') {
+    // Draw Map Boundaries
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'
+    ctx.lineWidth = 4
+    ctx.strokeRect(-camX, -camY, MAP_WIDTH, MAP_HEIGHT)
+
+    // 3. User Input & Heading steering (Mouse navigation has priority)
+    if (activeMode === 'playing') {
+      if (p1Head) {
+        // Calculate steer heading based on mouse offset relative to screen center
+        const mouseAngle = Math.atan2(mousePosRef.current.y, mousePosRef.current.x)
+        targetAngle1Ref.current = mouseAngle
+
+        // WASD overrides
         if (keysPressedRef.current['a'] || keysPressedRef.current['A']) targetAngle1Ref.current -= 0.08
         if (keysPressedRef.current['d'] || keysPressedRef.current['D']) targetAngle1Ref.current += 0.08
-        
-        // Speed boost
+
+        // Boost acceleration handler
         if (keysPressedRef.current[' ']) {
           speed1Ref.current = 5.2
-          // spawn trail particles
-          if (Math.random() < 0.3) {
+          // spawn trail particles from tail segment
+          const tail = snake1Ref.current[snake1Ref.current.length - 1]
+          if (tail && Math.random() < 0.25) {
             particlesRef.current.push({
-              x: head1.x,
-              y: head1.y,
-              vx: -Math.cos(angle1Ref.current) * 2,
-              vy: -Math.sin(angle1Ref.current) * 2,
+              x: tail.x,
+              y: tail.y,
+              vx: -Math.cos(angle1Ref.current) * 1.5 + (Math.random() - 0.5),
+              vy: -Math.sin(angle1Ref.current) * 1.5 + (Math.random() - 0.5),
               color: selectedSkin.color,
-              alpha: 1,
-              size: Math.random() * 3 + 1
+              alpha: 0.8,
+              size: Math.random() * 2.5 + 1.2
             })
           }
         } else {
           speed1Ref.current = 3.2
         }
+
+        // Interpolate angle smoothly
+        let diff = targetAngle1Ref.current - angle1Ref.current
+        while (diff < -Math.PI) diff += Math.PI * 2
+        while (diff > Math.PI) diff -= Math.PI * 2
+        angle1Ref.current += diff * 0.15
+
+        updateSnakePhysics(snake1Ref.current, angle1Ref.current, speed1Ref.current)
       }
-
-      // Smooth interpolation to target angle
-      angle1Ref.current += (targetAngle1Ref.current - angle1Ref.current) * 0.2
-      
-      // Move snake 1 segments
-      const nextX = head1.x + Math.cos(angle1Ref.current) * speed1Ref.current
-      const nextY = head1.y + Math.sin(angle1Ref.current) * speed1Ref.current
-      
-      // Boundary wraps
-      const wrappedX = (nextX + canvas.width) % canvas.width
-      const wrappedY = (nextY + canvas.height) % canvas.height
-
-      const newSegments = [{ x: wrappedX, y: wrappedY }, ...snake1Ref.current.slice(0, -1)]
-      snake1Ref.current = newSegments
     }
 
-    // 3. Steer Player 2 (Local PvP)
+    // 4. Steer Player 2 (Local PvP)
     if (activeMode === 'playing' && gameSubModeRef.current === 'local') {
-      // Offline local split keys
-      const head2 = snake2Ref.current[0]
-      if (head2) {
+      const h2 = snake2Ref.current[0]
+      if (h2) {
         if (keysPressedRef.current['ArrowLeft']) targetAngle2Ref.current -= 0.08
         if (keysPressedRef.current['ArrowRight']) targetAngle2Ref.current += 0.08
         
         if (keysPressedRef.current['Enter']) {
           speed2Ref.current = 5.2
+          const tail = snake2Ref.current[snake2Ref.current.length - 1]
+          if (tail && Math.random() < 0.25) {
+            particlesRef.current.push({
+              x: tail.x,
+              y: tail.y,
+              vx: -Math.cos(angle2Ref.current) * 1.5 + (Math.random() - 0.5),
+              vy: -Math.sin(angle2Ref.current) * 1.5 + (Math.random() - 0.5),
+              color: '#ec4899',
+              alpha: 0.8,
+              size: Math.random() * 2.5 + 1.2
+            })
+          }
         } else {
           speed2Ref.current = 3.2
         }
 
-        angle2Ref.current += (targetAngle2Ref.current - angle2Ref.current) * 0.2
-        const nextX2 = head2.x + Math.cos(angle2Ref.current) * speed2Ref.current
-        const nextY2 = head2.y + Math.sin(angle2Ref.current) * speed2Ref.current
-        
-        const wrappedX2 = (nextX2 + canvas.width) % canvas.width
-        const wrappedY2 = (nextY2 + canvas.height) % canvas.height
+        let diff = targetAngle2Ref.current - angle2Ref.current
+        while (diff < -Math.PI) diff += Math.PI * 2
+        while (diff > Math.PI) diff -= Math.PI * 2
+        angle2Ref.current += diff * 0.15
 
-        const newSegments2 = [{ x: wrappedX2, y: wrappedY2 }, ...snake2Ref.current.slice(0, -1)]
-        snake2Ref.current = newSegments2
+        updateSnakePhysics(snake2Ref.current, angle2Ref.current, speed2Ref.current)
       }
     }
 
-    // 4. Update WebRTC online game state
+    // 5. Update WebRTC online guest state
     if (connectionStatus === 'connected') {
       if (onlineRole === 'host') {
-        // Host coordinates food and calculates crashes, then broadcasts sync
         if (dataChannelRef.current?.readyState === 'open') {
           dataChannelRef.current.send(JSON.stringify({
             type: 'sync',
@@ -566,7 +653,6 @@ export default function SpikeSnakeGame() {
           }))
         }
       } else {
-        // Guest sends its head updates
         if (dataChannelRef.current?.readyState === 'open') {
           dataChannelRef.current.send(JSON.stringify({
             type: 'snake',
@@ -575,32 +661,30 @@ export default function SpikeSnakeGame() {
           }))
         }
         
-        // Guest locally steers its own snake2
-        const head2 = snake2Ref.current[0]
-        if (head2) {
+        // Guest steers its snake2 locally
+        const h2 = snake2Ref.current[0]
+        if (h2) {
+          // keyboard overrides
           if (keysPressedRef.current['a'] || keysPressedRef.current['A']) targetAngle2Ref.current -= 0.08
           if (keysPressedRef.current['d'] || keysPressedRef.current['D']) targetAngle2Ref.current += 0.08
           
-          angle2Ref.current += (targetAngle2Ref.current - angle2Ref.current) * 0.2
-          const nextX2 = head2.x + Math.cos(angle2Ref.current) * speed2Ref.current
-          const nextY2 = head2.y + Math.sin(angle2Ref.current) * speed2Ref.current
-          
-          const wrappedX2 = (nextX2 + canvas.width) % canvas.width
-          const wrappedY2 = (nextY2 + canvas.height) % canvas.height
+          let diff = targetAngle2Ref.current - angle2Ref.current
+          while (diff < -Math.PI) diff += Math.PI * 2
+          while (diff > Math.PI) diff -= Math.PI * 2
+          angle2Ref.current += diff * 0.15
 
-          const newSegments2 = [{ x: wrappedX2, y: wrappedY2 }, ...snake2Ref.current.slice(0, -1)]
-          snake2Ref.current = newSegments2
+          updateSnakePhysics(snake2Ref.current, angle2Ref.current, speed2Ref.current)
         }
       }
     }
 
-    // 5. Update AI Snakes (Single Player Mode)
+    // 6. Update AI Snakes (Single Player Mode)
     if (activeMode === 'playing' && aiSnakesRef.current.length > 0) {
       aiSnakesRef.current.forEach((ai) => {
         const head = ai.segments[0]
         if (!head) return
 
-        // Dumb AI targeting closest food
+        // Target closest food
         let closestFood = foodRef.current[0]
         let minDist = 9999
         foodRef.current.forEach((f) => {
@@ -613,60 +697,54 @@ export default function SpikeSnakeGame() {
 
         if (closestFood) {
           const targetAngle = Math.atan2(closestFood.y - head.y, closestFood.x - head.x)
-          ai.angle += (targetAngle - ai.angle) * 0.12
+          ai.angle += (targetAngle - ai.angle) * 0.08
         }
 
-        const nextX = head.x + Math.cos(ai.angle) * ai.speed
-        const nextY = head.y + Math.sin(ai.angle) * ai.speed
-        
-        const wrappedX = (nextX + canvas.width) % canvas.width
-        const wrappedY = (nextY + canvas.height) % canvas.height
-
-        ai.segments = [{ x: wrappedX, y: wrappedY }, ...ai.segments.slice(0, -1)]
+        updateSnakePhysics(ai.segments, ai.angle, ai.speed)
       })
     }
 
-    // 6. Food Collisions (calculated on host or locally in offline)
+    // 7. Food collision checks (host or local client computes)
     const canManageFood = connectionStatus !== 'connected' || onlineRole === 'host'
     if (canManageFood) {
-      // check P1 eating
       const h1 = snake1Ref.current[0]
+      const h2 = snake2Ref.current[0]
+
+      // P1 eat check
       if (h1) {
         foodRef.current.forEach((f, idx) => {
           if (Math.hypot(f.x - h1.x, f.y - h1.y) < 18) {
-            // Eat food
             try { sound.playClick() } catch {}
-            // Grow snake
             snake1Ref.current.push({ ...snake1Ref.current[snake1Ref.current.length - 1] })
             setScore(snake1Ref.current.length)
 
-            // Emit particles
-            for (let i = 0; i < 5; i++) {
+            // Spark particles on consume
+            for (let i = 0; i < 4; i++) {
               particlesRef.current.push({
                 x: f.x,
                 y: f.y,
-                vx: (Math.random() - 0.5) * 4,
-                vy: (Math.random() - 0.5) * 4,
+                vx: (Math.random() - 0.5) * 3,
+                vy: (Math.random() - 0.5) * 3,
                 color: f.color,
                 alpha: 1,
-                size: Math.random() * 4 + 2
+                size: Math.random() * 3 + 1.5
               })
             }
 
-            // Respawn food
+            // Respawn
             foodRef.current[idx] = {
               id: f.id,
-              x: Math.random() * canvas.width,
-              y: Math.random() * canvas.height,
+              x: 50 + Math.random() * (MAP_WIDTH - 100),
+              y: 50 + Math.random() * (MAP_HEIGHT - 100),
               color: f.color,
-              value: 1
+              value: 1,
+              size: Math.random() * 3 + 2.5
             }
           }
         })
       }
 
-      // check P2 eating
-      const h2 = snake2Ref.current[0]
+      // P2 eat check
       if (h2) {
         foodRef.current.forEach((f, idx) => {
           if (Math.hypot(f.x - h2.x, f.y - h2.y) < 18) {
@@ -674,30 +752,31 @@ export default function SpikeSnakeGame() {
             snake2Ref.current.push({ ...snake2Ref.current[snake2Ref.current.length - 1] })
             setRivalScore(snake2Ref.current.length)
 
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 4; i++) {
               particlesRef.current.push({
                 x: f.x,
                 y: f.y,
-                vx: (Math.random() - 0.5) * 4,
-                vy: (Math.random() - 0.5) * 4,
+                vx: (Math.random() - 0.5) * 3,
+                vy: (Math.random() - 0.5) * 3,
                 color: f.color,
                 alpha: 1,
-                size: Math.random() * 4 + 2
+                size: Math.random() * 3 + 1.5
               })
             }
 
             foodRef.current[idx] = {
               id: f.id,
-              x: Math.random() * canvas.width,
-              y: Math.random() * canvas.height,
+              x: 50 + Math.random() * (MAP_WIDTH - 100),
+              y: 50 + Math.random() * (MAP_HEIGHT - 100),
               color: f.color,
-              value: 1
+              value: 1,
+              size: Math.random() * 3 + 2.5
             }
           }
         })
       }
 
-      // Check AI eating
+      // AI eat check
       aiSnakesRef.current.forEach((ai) => {
         const head = ai.segments[0]
         if (!head) return
@@ -706,57 +785,55 @@ export default function SpikeSnakeGame() {
             ai.segments.push({ ...ai.segments[ai.segments.length - 1] })
             foodRef.current[idx] = {
               id: f.id,
-              x: Math.random() * canvas.width,
-              y: Math.random() * canvas.height,
+              x: 50 + Math.random() * (MAP_WIDTH - 100),
+              y: 50 + Math.random() * (MAP_HEIGHT - 100),
               color: f.color,
-              value: 1
+              value: 1,
+              size: Math.random() * 3 + 2.5
             }
           }
         })
       })
     }
 
-    // 7. Crash / Death Check (Head to body collisions)
+    // 8. Head-to-body crash detections (Standard Slither Rules)
     if (canManageFood) {
       const h1 = snake1Ref.current[0]
       const h2 = snake2Ref.current[0]
 
-      // check if P1 crashes head-first into P2 body
       if (h1 && h2) {
-        // Crash into P2
+        // Player 1 crashes into Player 2 body
         snake2Ref.current.slice(1).forEach((seg) => {
-          if (Math.hypot(seg.x - h1.x, seg.y - h1.y) < 12) {
-            // P1 Dies!
+          if (Math.hypot(seg.x - h1.x, seg.y - h1.y) < 13) {
             handleGameOver(connectionStatus === 'connected' ? 'Guest Player Wins!' : 'Player 2 Wins!')
           }
         })
 
-        // check if P2 crashes head-first into P1 body
+        // Player 2 crashes into Player 1 body
         snake1Ref.current.slice(1).forEach((seg) => {
-          if (Math.hypot(seg.x - h2.x, seg.y - h2.y) < 12) {
-            // P2 Dies!
+          if (Math.hypot(seg.x - h2.x, seg.y - h2.y) < 13) {
             handleGameOver('Player 1 Wins!')
           }
         })
       }
 
-      // AI Crashes
+      // AI crash evaluations
       if (h1 && aiSnakesRef.current.length > 0) {
         aiSnakesRef.current.forEach((ai) => {
           const aiHead = ai.segments[0]
           if (!aiHead) return
 
-          // AI crashes into P1
+          // AI crashes into P1 body -> AI dies & drops food
           snake1Ref.current.forEach((seg) => {
             if (Math.hypot(seg.x - aiHead.x, seg.y - aiHead.y) < 12) {
-              // AI dies, respawn
+              spawnSheddedFood(ai.segments)
               respawnAI(ai)
             }
           })
 
-          // P1 crashes into AI
-          ai.segments.forEach((seg) => {
-            if (Math.hypot(seg.x - h1.x, seg.y - h1.y) < 12) {
+          // P1 crashes into AI body -> P1 dies
+          ai.segments.slice(1).forEach((seg) => {
+            if (Math.hypot(seg.x - h1.x, seg.y - h1.y) < 13) {
               handleGameOver('AI Wins!')
             }
           })
@@ -764,17 +841,36 @@ export default function SpikeSnakeGame() {
       }
     }
 
-    // 8. Draw Food pellets (neon glowing circles)
+    // Helper to spawn shedded food from dead snake segments
+    const spawnSheddedFood = (deadSegments: SnakeSegment[]) => {
+      deadSegments.forEach((seg, idx) => {
+        if (idx % 2 === 0) {
+          foodRef.current.push({
+            id: `food-shed-${Date.now()}-${idx}-${Math.random()}`,
+            x: seg.x + (Math.random() - 0.5) * 20,
+            y: seg.y + (Math.random() - 0.5) * 20,
+            color: '#ef4444',
+            value: 2,
+            size: 5
+          })
+        }
+      })
+    }
+
+    // 9. Draw Food pellets (offset by camera)
     foodRef.current.forEach((f) => {
+      const screenX = f.x - camX
+      const screenY = f.y - camY
+      
       ctx.shadowBlur = 10
       ctx.shadowColor = f.color
       ctx.fillStyle = f.color
       ctx.beginPath()
-      ctx.arc(f.x, f.y, 4, 0, Math.PI * 2)
+      ctx.arc(screenX, screenY, f.size, 0, Math.PI * 2)
       ctx.fill()
     })
 
-    // 9. Draw particles
+    // 10. Draw particles
     particlesRef.current.forEach((p, idx) => {
       p.x += p.vx
       p.y += p.vy
@@ -788,38 +884,101 @@ export default function SpikeSnakeGame() {
       ctx.fillStyle = p.color
       ctx.globalAlpha = p.alpha
       ctx.beginPath()
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+      ctx.arc(p.x - camX, p.y - camY, p.size, 0, Math.PI * 2)
       ctx.fill()
     })
-    ctx.globalAlpha = 1.0 // reset
+    ctx.globalAlpha = 1.0 // reset shadow/alpha
 
-    // 10. Draw Snake 1 (User / Host)
-    ctx.shadowBlur = 15
+    // Helper to render a 3D Shaded sphere segment
+    const draw3DSphereSegment = (x: number, y: number, r: number, color: string, darkColor: string) => {
+      const screenX = x - camX
+      const screenY = y - camY
+
+      const grad = ctx.createRadialGradient(
+        screenX - r * 0.3, screenY - r * 0.3, r * 0.1,
+        screenX, screenY, r
+      )
+      // Highlight coordinates simulation
+      grad.addColorStop(0, '#ffffff')
+      grad.addColorStop(0.2, color)
+      grad.addColorStop(0.8, darkColor)
+      grad.addColorStop(1, '#000000')
+
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.arc(screenX, screenY, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // Helper to draw head armor spiky thorns (Advanced Spikes feature)
+    const drawSpikesOnHead = (x: number, y: number, angle: number, r: number) => {
+      const screenX = x - camX
+      const screenY = y - camY
+      ctx.fillStyle = '#94a3b8' // steel chrome color
+      ctx.strokeStyle = '#475569'
+      ctx.lineWidth = 1
+
+      const drawSpikeTriangle = (spikeAngle: number) => {
+        const baseWidth = 5
+        const spikeLength = 10
+
+        const tipX = screenX + Math.cos(spikeAngle) * (r + spikeLength)
+        const tipY = screenY + Math.sin(spikeAngle) * (r + spikeLength)
+
+        const leftBaseX = screenX + Math.cos(spikeAngle + 0.3) * r
+        const leftBaseY = screenY + Math.sin(spikeAngle + 0.3) * r
+
+        const rightBaseX = screenX + Math.cos(spikeAngle - 0.3) * r
+        const rightBaseY = screenY + Math.sin(spikeAngle - 0.3) * r
+
+        ctx.beginPath()
+        ctx.moveTo(leftBaseX, leftBaseY)
+        ctx.lineTo(tipX, tipY)
+        ctx.lineTo(rightBaseX, rightBaseY)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      }
+
+      // Draw lateral spikes (Left / Right perpendicular angles)
+      drawSpikeTriangle(angle + Math.PI / 2)
+      drawSpikeTriangle(angle - Math.PI / 2)
+    }
+
+    // 11. Render Snake 1 (Host client)
+    ctx.shadowBlur = 18
     ctx.shadowColor = selectedSkin.color
     
-    // Draw Body segments
-    snake1Ref.current.forEach((seg, idx) => {
-      const ratio = 1 - idx / snake1Ref.current.length
-      ctx.fillStyle = selectedSkin.color
-      ctx.beginPath()
-      ctx.arc(seg.x, seg.y, 8 * ratio + 3, 0, Math.PI * 2)
-      ctx.fill()
-    })
+    // Draw body segments (backwards to draw head overlay correctly)
+    for (let i = snake1Ref.current.length - 1; i >= 0; i--) {
+      const seg = snake1Ref.current[i]
+      const ratio = 1 - i / snake1Ref.current.length
+      const radius = 9 * ratio + 3.5
+      draw3DSphereSegment(seg.x, seg.y, radius, selectedSkin.color, selectedSkin.darkColor)
+      
+      // armored spiky details every 4th segment
+      if (i > 0 && i % 4 === 0) {
+        drawSpikesOnHead(seg.x, seg.y, angle1Ref.current, radius)
+      }
+    }
     
-    // Draw Head details (Eyes looking forward)
+    // Render head and eyes
     const h1 = snake1Ref.current[0]
     if (h1) {
+      drawSpikesOnHead(h1.x, h1.y, angle1Ref.current, 12.5)
+
+      // Eyes
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      const eyeX1 = h1.x + Math.cos(angle1Ref.current + 0.5) * 6
-      const eyeY1 = h1.y + Math.sin(angle1Ref.current + 0.5) * 6
-      const eyeX2 = h1.x + Math.cos(angle1Ref.current - 0.5) * 6
-      const eyeY2 = h1.y + Math.sin(angle1Ref.current - 0.5) * 6
-      ctx.arc(eyeX1, eyeY1, 3.5, 0, Math.PI * 2)
-      ctx.arc(eyeX2, eyeY2, 3.5, 0, Math.PI * 2)
+      const eyeX1 = h1.x - camX + Math.cos(angle1Ref.current + 0.45) * 7.5
+      const eyeY1 = h1.y - camY + Math.sin(angle1Ref.current + 0.45) * 7.5
+      const eyeX2 = h1.x - camX + Math.cos(angle1Ref.current - 0.45) * 7.5
+      const eyeY2 = h1.y - camY + Math.sin(angle1Ref.current - 0.45) * 7.5
+      ctx.arc(eyeX1, eyeY1, 3.8, 0, Math.PI * 2)
+      ctx.arc(eyeX2, eyeY2, 3.8, 0, Math.PI * 2)
       ctx.fill()
 
-      // Pupils
+      // Pupils looking ahead
       ctx.fillStyle = '#000000'
       ctx.beginPath()
       ctx.arc(eyeX1 + Math.cos(angle1Ref.current) * 1.5, eyeY1 + Math.sin(angle1Ref.current) * 1.5, 1.5, 0, Math.PI * 2)
@@ -827,27 +986,33 @@ export default function SpikeSnakeGame() {
       ctx.fill()
     }
 
-    // 11. Draw Snake 2 (Guest / Rival)
+    // 12. Render Snake 2 (Guest client / Local Player 2)
     const color2 = '#ec4899'
+    const color2Dark = '#500724'
     ctx.shadowColor = color2
-    snake2Ref.current.forEach((seg, idx) => {
-      const ratio = 1 - idx / snake2Ref.current.length
-      ctx.fillStyle = color2
-      ctx.beginPath()
-      ctx.arc(seg.x, seg.y, 8 * ratio + 3, 0, Math.PI * 2)
-      ctx.fill()
-    })
+    for (let i = snake2Ref.current.length - 1; i >= 0; i--) {
+      const seg = snake2Ref.current[i]
+      const ratio = 1 - i / snake2Ref.current.length
+      const radius = 9 * ratio + 3.5
+      draw3DSphereSegment(seg.x, seg.y, radius, color2, color2Dark)
+      
+      if (i > 0 && i % 4 === 0) {
+        drawSpikesOnHead(seg.x, seg.y, angle2Ref.current, radius)
+      }
+    }
 
     const h2 = snake2Ref.current[0]
     if (h2) {
+      drawSpikesOnHead(h2.x, h2.y, angle2Ref.current, 12.5)
+
       ctx.fillStyle = '#ffffff'
       ctx.beginPath()
-      const eyeX1 = h2.x + Math.cos(angle2Ref.current + 0.5) * 6
-      const eyeY1 = h2.y + Math.sin(angle2Ref.current + 0.5) * 6
-      const eyeX2 = h2.x + Math.cos(angle2Ref.current - 0.5) * 6
-      const eyeY2 = h2.y + Math.sin(angle2Ref.current - 0.5) * 6
-      ctx.arc(eyeX1, eyeY1, 3.5, 0, Math.PI * 2)
-      ctx.arc(eyeX2, eyeY2, 3.5, 0, Math.PI * 2)
+      const eyeX1 = h2.x - camX + Math.cos(angle2Ref.current + 0.45) * 7.5
+      const eyeY1 = h2.y - camY + Math.sin(angle2Ref.current + 0.45) * 7.5
+      const eyeX2 = h2.x - camX + Math.cos(angle2Ref.current - 0.45) * 7.5
+      const eyeY2 = h2.y - camY + Math.sin(angle2Ref.current - 0.45) * 7.5
+      ctx.arc(eyeX1, eyeY1, 3.8, 0, Math.PI * 2)
+      ctx.arc(eyeX2, eyeY2, 3.8, 0, Math.PI * 2)
       ctx.fill()
 
       ctx.fillStyle = '#000000'
@@ -857,16 +1022,19 @@ export default function SpikeSnakeGame() {
       ctx.fill()
     }
 
-    // 12. Draw AI Snakes
+    // 13. Render AI Snakes
     aiSnakesRef.current.forEach((ai) => {
       ctx.shadowColor = ai.color
-      ai.segments.forEach((seg, idx) => {
-        const ratio = 1 - idx / ai.segments.length
-        ctx.fillStyle = ai.color
-        ctx.beginPath()
-        ctx.arc(seg.x, seg.y, 8 * ratio + 3, 0, Math.PI * 2)
-        ctx.fill()
-      })
+      for (let i = ai.segments.length - 1; i >= 0; i--) {
+        const seg = ai.segments[i]
+        const ratio = 1 - i / ai.segments.length
+        const radius = 9 * ratio + 3.5
+        draw3DSphereSegment(seg.x, seg.y, radius, ai.color, ai.darkColor)
+
+        if (i > 0 && i % 4 === 0) {
+          drawSpikesOnHead(seg.x, seg.y, ai.angle, radius)
+        }
+      }
     })
 
     // Reset shadow blur
@@ -878,10 +1046,10 @@ export default function SpikeSnakeGame() {
   }
 
   const respawnAI = (ai: any) => {
-    const startX = 100 + Math.random() * 800
-    const startY = 100 + Math.random() * 500
+    const startX = 200 + Math.random() * (MAP_WIDTH - 400)
+    const startY = 200 + Math.random() * (MAP_HEIGHT - 400)
     ai.segments = []
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 15; i++) {
       ai.segments.push({ x: startX, y: startY })
     }
     ai.angle = Math.random() * Math.PI * 2
@@ -892,18 +1060,14 @@ export default function SpikeSnakeGame() {
     setWinnerMessage(winner)
     if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current)
 
-    // Trigger success confetti if user wins
     if (winner.includes('Player 1') || winner.includes('Host')) {
       try {
         sound.playWin()
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } })
       } catch {}
-      
-      // Award real XP / Coins in DB
       claimCoinReward()
     }
 
-    // Broadcast state online
     if (connectionStatus === 'connected' && onlineRole === 'host') {
       if (dataChannelRef.current?.readyState === 'open') {
         dataChannelRef.current.send(JSON.stringify({ type: 'gameover', winner }))
@@ -915,7 +1079,7 @@ export default function SpikeSnakeGame() {
     <AppShell>
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
         
-        {/* Header Header */}
+        {/* Header Title */}
         <div className="flex items-center justify-between border-b border-border/40 pb-4">
           <div className="flex items-center gap-3">
             <Link href="/" className="p-2 rounded-xl bg-muted/60 border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
@@ -924,10 +1088,10 @@ export default function SpikeSnakeGame() {
             <div>
               <h1 className="text-2xl font-black font-display text-foreground uppercase tracking-wider flex items-center gap-2">
                 <Gamepad2 className="h-6 w-6 text-primary animate-pulse" />
-                <span>Spike Snake Arena</span>
+                <span>Spike Snake Arena (3D Sphere Physics)</span>
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Steer your neon snake, eat glowing energy dots, grow, and trap other players to claim rewards.
+                Steer your neon 3D spike-armored snake in a scrollable virtual grid. Trap rivals and absorb shedded cells.
               </p>
             </div>
           </div>
@@ -973,7 +1137,7 @@ export default function SpikeSnakeGame() {
               </div>
             </div>
 
-            {/* In-Game Game modes Selection */}
+            {/* Game mode select panel */}
             <div className="md:col-span-2 p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-5 justify-between">
               <div>
                 <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Select Match Mode</span>
@@ -987,16 +1151,16 @@ export default function SpikeSnakeGame() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button
-                  onClick={() => { setActiveMode('single'); startGame('single'); }}
+                  onClick={() => { startGame('single'); }}
                   className="p-5 rounded-2xl border border-border/40 hover:border-primary/40 bg-muted/20 hover:bg-muted/40 transition-all flex flex-col gap-3 items-center text-center cursor-pointer group"
                 >
                   <Gamepad2 className="h-8 w-8 text-primary group-hover:scale-105 transition-transform" />
                   <span className="text-xs font-bold text-foreground">Single Player vs AI</span>
-                  <span className="text-[9px] text-muted-foreground">Compete against active AI bots on the board.</span>
+                  <span className="text-[9px] text-muted-foreground">Scroll map, eat energy dots, hunt AI bots.</span>
                 </button>
 
                 <button
-                  onClick={() => { setActiveMode('local'); startGame('local'); }}
+                  onClick={() => { startGame('local'); }}
                   className="p-5 rounded-2xl border border-border/40 hover:border-primary/40 bg-muted/20 hover:bg-muted/40 transition-all flex flex-col gap-3 items-center text-center cursor-pointer group"
                 >
                   <Users className="h-8 w-8 text-secondary group-hover:scale-105 transition-transform" />
@@ -1173,7 +1337,7 @@ export default function SpikeSnakeGame() {
               ref={canvasRef}
               width={1120}
               height={560}
-              className="w-full max-w-full aspect-[2/1] block bg-black"
+              className="w-full max-w-full aspect-[2/1] block bg-black cursor-crosshair"
             />
 
             {/* Game Over modal overlay */}
@@ -1187,23 +1351,23 @@ export default function SpikeSnakeGame() {
 
                 <div className="flex flex-col gap-2">
                   <h2 className="text-3xl font-black font-display text-foreground uppercase tracking-widest">
-                    MATCH CONCLUDED
+                    ARENA DESTROYED
                   </h2>
                   <p className="text-lg font-bold text-primary tracking-wide">
                     {winnerMessage}
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Final Snake Length: <strong className="text-white">{score} segments</strong>
+                    Final Score (Snake Length): <strong className="text-white">{score} cells</strong>
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => startGame(connectionStatus === 'connected' ? 'online' : 'single')}
+                    onClick={() => startGame(gameSubModeRef.current)}
                     className="h-11 px-6 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/95 transition-all cursor-pointer"
                   >
                     <Play className="h-4 w-4 fill-white" />
-                    <span>Rematch</span>
+                    <span>Play Again</span>
                   </button>
 
                   <button
