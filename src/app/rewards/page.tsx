@@ -169,6 +169,13 @@ export default function RewardsPage() {
           origin: { y: 0.6 }
         })
 
+        // Log the reward claim persistently in database
+        fetch('/api/user/claim-reward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rewardType: won.label, amount: won.value })
+        }).catch(() => {})
+
         // Mock increment XP in local/backend storage telemetry
         if (won.type === 'xp') {
           fetch('/api/user/add-xp', {

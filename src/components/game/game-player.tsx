@@ -60,6 +60,13 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
     // Register a play view telemetry count
     fetch(`/api/games/${slug}/play`, { method: 'POST' }).catch(() => {})
 
+    // Register the gameplay database record persistently
+    fetch('/api/games/play-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameSlug: slug })
+    }).catch(() => {})
+
     // Save to local storage for "Continue Playing" history
     try {
       const recent = localStorage.getItem('arcadecore_recent')

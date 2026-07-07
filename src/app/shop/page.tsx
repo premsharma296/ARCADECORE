@@ -101,6 +101,13 @@ export default function ShopPage() {
       const nextCoins = coins + amount
       triggerCoinsUpdate(nextCoins)
       setIsProcessingStripe(false)
+
+      // Persistent database transaction sync
+      fetch('/api/user/buy-coins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: price, coins: amount })
+      }).catch(() => {})
       
       setStripeSuccessMessage(`Successfully purchased ${amount} Coins for $${price}!`)
       sound.playWin()

@@ -151,3 +151,56 @@ model GameView {
   game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
   viewedAt  DateTime @default(now())
 }
+
+model LivePlayer {
+  id        String   @id @default(uuid())
+  userId    String
+  gameId    String?
+  lastSeen  DateTime @default(now())
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  amount    Float
+  coins     Int
+  userId    String
+  status    String   // "SUCCESS", "PENDING", "FAILED"
+  createdAt DateTime @default(now())
+}
+
+model GamePlay {
+  id        String   @id @default(uuid())
+  gameId    String
+  userId    String
+  score     Int      @default(0)
+  duration  Int      @default(0) // seconds played
+  createdAt DateTime @default(now())
+}
+
+model TrafficLog {
+  id        String   @id @default(uuid())
+  country   String   @default("US")
+  device    String   @default("Desktop")
+  browser   String   @default("Chrome")
+  referrer  String   @default("Organic")
+  path      String   @default("/")
+  createdAt DateTime @default(now())
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  room      String   @default("global") // "global" or game slug
+  username  String
+  avatarUrl String
+  content   String
+  isVip     Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model DailyRewardClaim {
+  id        String   @id @default(uuid())
+  userId    String
+  rewardType String
+  amount    Int
+  createdAt DateTime @default(now())
+}

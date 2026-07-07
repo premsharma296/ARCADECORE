@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { MessageSquare, Activity, Send, Trophy, Flame } from 'lucide-react'
 import { sound } from '@/lib/sound'
 import { useUser } from '@clerk/nextjs'
@@ -23,154 +23,107 @@ interface ActivityPlay {
   time: string
 }
 
-const CHAT_BOT_NAMES = ['NeonDiver', 'GamerPro', 'TetrisQueen', 'CyberNinja', 'PixelLord', 'RetroKid', 'OutrunRacer', 'BitCoiner', 'SpaceCadet', 'DogeMaster']
-const CHAT_BOT_AVATARS = [
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=40&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=40&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=40&auto=format&fit=crop'
-]
-
-const CHAT_BOT_PHRASES = [
-  'Who wants to challenge me in Cosmic Tetris?',
-  'Just hit 4,200 points on Neon Velocity! 🏎️💨',
-  'Weekly missions are kinda hard today, anyone completed the daily spin?',
-  'This background music loop is an absolute vibe! 🔊⚡',
-  'Crypto Clicker is addictive, my finger is sore lmao',
-  'Let\'s gooo just unlocked the Jackpot badge! 🏆',
-  'Flappy Cyber physics are so tight, love the thruster sparks.',
-  'Anyone active for multiplayer matchmaking later?',
-  'OMG Space Invaders retro waves are intense'
-]
-
-const GAMES_LIST = ['Neon Velocity', 'Cosmic Tetris', 'Flappy Cyber', 'Space Invaders Retro', 'Crypto Clicker']
-
 export default function LiveSidebar() {
   const { user } = useUser()
   const [activeSubTab, setActiveSubTab] = useState<'chat' | 'activity'>('chat')
-  
-  // Chat feed
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      username: 'NeonDiver',
-      avatar: CHAT_BOT_AVATARS[0],
-      text: 'Welcome to ArcadeCore live chat! 🔥',
-      time: '1m ago',
-      isVip: true
-    },
-    {
-      id: '2',
-      username: 'TetrisQueen',
-      avatar: CHAT_BOT_AVATARS[1],
-      text: 'Just cleared 4 rows simultaneously in Cosmic Tetris! Let\'s go!',
-      time: '30s ago'
-    }
-  ])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [activityPlays, setActivityPlays] = useState<ActivityPlay[]>([])
   const [typedMessage, setTypedMessage] = useState('')
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  // Live Activity
-  const [activityPlays, setActivityPlays] = useState<ActivityPlay[]>([
-    {
-      id: '1',
-      username: 'SpaceCadet',
-      gameName: 'Space Invaders Retro',
-      score: '1,480 pts',
-      coins: 45,
-      time: 'Just now'
-    },
-    {
-      id: '2',
-      username: 'BitCoiner',
-      gameName: 'Crypto Clicker',
-      score: '52,900 coins',
-      coins: 120,
-      time: '3s ago'
+  // Fetch real chat logs from database
+  const fetchChat = useCallback(async () => {
+    try {
+      const res = await fetch('/api/realtime/chat')
+      if (res.ok) {
+        const data = await res.json()
+        const formatted = data.map((d: any) => ({
+          id: d.id,
+          username: d.username,
+          avatar: d.avatarUrl,
+          text: d.content,
+          time: new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isVip: d.isVip
+        }))
+        setChatMessages(formatted)
+      }
+    } catch (e) {
+      console.error('Failed to load chat:', e)
     }
-  ])
+  }, [])
+
+  // Fetch real game plays from database
+  const fetchPlays = useCallback(async () => {
+    try {
+      const res = await fetch('/api/realtime/plays')
+      if (res.ok) {
+        const data = await res.json()
+        setActivityPlays(data)
+      }
+    } catch (e) {
+      console.error('Failed to load plays:', e)
+    }
+  }, [])
+
+  // Initial Load
+  useEffect(() => {
+    fetchChat()
+    fetchPlays()
+  }, [fetchChat, fetchPlays])
+
+  // Real-Time Database Polling (every 3 seconds for chat and 4 seconds for plays)
+  useEffect(() => {
+    const chatTimer = setInterval(() => {
+      if (activeSubTab === 'chat') {
+        fetchChat()
+      }
+    }, 3000)
+
+    const playsTimer = setInterval(() => {
+      if (activeSubTab === 'activity') {
+        fetchPlays()
+      }
+    }, 4000)
+
+    return () => {
+      clearInterval(chatTimer)
+      clearInterval(playsTimer)
+    }
+  }, [activeSubTab, fetchChat, fetchPlays])
 
   // Scroll Chat to Bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, activeSubTab])
 
-  // Simulated Chat Loops (every 5-9 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (activeSubTab !== 'chat') return
-      
-      const botName = CHAT_BOT_NAMES[Math.floor(Math.random() * CHAT_BOT_NAMES.length)]
-      const avatar = CHAT_BOT_AVATARS[Math.floor(Math.random() * CHAT_BOT_AVATARS.length)]
-      const text = CHAT_BOT_PHRASES[Math.floor(Math.random() * CHAT_BOT_PHRASES.length)]
-
-      setChatMessages((prev) => [
-        ...prev.slice(-25), // keep last 25
-        {
-          id: Date.now().toString(),
-          username: botName,
-          avatar: avatar,
-          text: text,
-          time: 'Just now',
-          isVip: Math.random() < 0.2
-        }
-      ])
-      
-      // Play soft tick sound when messages arrive
-      sound.playTick()
-    }, 6000)
-
-    return () => clearInterval(interval)
-  }, [activeSubTab])
-
-  // Simulated Plays Ticker (every 2-4 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const botName = CHAT_BOT_NAMES[Math.floor(Math.random() * CHAT_BOT_NAMES.length)]
-      const game = GAMES_LIST[Math.floor(Math.random() * GAMES_LIST.length)]
-      const coinsWon = Math.floor(Math.random() * 85) + 15
-      
-      let scoreStr = `${Math.floor(Math.random() * 2500) + 100} pts`
-      if (game === 'Crypto Clicker') scoreStr = `${(Math.random() * 25 + 1).toFixed(1)}K clicks`
-
-      setActivityPlays((prev) => [
-        {
-          id: Date.now().toString(),
-          username: botName,
-          gameName: game,
-          score: scoreStr,
-          coins: coinsWon,
-          time: 'Just now'
-        },
-        ...prev.slice(0, 15) // Keep last 15
-      ])
-    }, 3200)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  // User message submit handler
-  const handleSendMessage = (e: React.FormEvent) => {
+  // User message submit handler to write directly to PostgreSQL
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!typedMessage.trim()) return
 
-    const username = user?.username || user?.emailAddresses[0]?.emailAddress.split('@')[0] || 'GuestPlayer'
+    const username = user?.username || user?.firstName || 'GuestPlayer'
     const avatar = user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40&auto=format&fit=crop'
+    const payload = {
+      room: 'global',
+      username,
+      avatarUrl: avatar,
+      content: typedMessage.trim(),
+      isVip: true
+    }
 
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        username,
-        avatar,
-        text: typedMessage,
-        time: 'Just now',
-        isVip: true
-      }
-    ])
-    
     setTypedMessage('')
     sound.playClick()
+
+    try {
+      await fetch('/api/realtime/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      fetchChat()
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   return (

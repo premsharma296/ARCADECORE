@@ -20,9 +20,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // 1. Fetch real database user count
+    // 1. Fetch real database user count and live metrics
     let dbUserCount = 0
     let dbUsersList: any[] = []
+    let liveSessionsCount = 0
+    let dbRevenueSum = 0
 
     try {
       dbUserCount = await db.user.count()
@@ -30,14 +32,29 @@ export async function GET(req: NextRequest) {
         take: 15,
         orderBy: { createdAt: 'desc' }
       })
+      
+      // Query active live players inside the last 15 minutes
+      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+      liveSessionsCount = await db.livePlayer.count({
+        where: {
+          lastSeen: { gte: fifteenMinsAgo }
+        }
+      })
+
+      // Query total completed transaction aggregates
+      const revenueAgg = await db.transaction.aggregate({
+        _sum: { amount: true },
+        where: { status: 'SUCCESS' }
+      })
+      dbRevenueSum = revenueAgg._sum.amount || 0
     } catch (e) {
-      console.log('Postgres user query failed, falling back to mock dashboard seeds')
+      console.log('Postgres queries failing/initializing, using fallbacks')
     }
 
-    // 2. Format final statistics
+    // 2. Format final statistics combining cloud data + baseline values
     const totalUsers = 15000 + dbUserCount
-    const activeSessions = 800 + Math.floor(Math.random() * 40 - 20)
-    const totalRevenue = 17500 + (dbUserCount * 1.5)
+    const activeSessions = 800 + liveSessionsCount
+    const totalRevenue = 17500 + dbRevenueSum
 
     // Match Dribbble default user list and append actual database users at the top
     const mockUsers = [

@@ -75,6 +75,8 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchStats()
+    const timer = setInterval(fetchStats, 3000)
+    return () => clearInterval(timer)
   }, [fetchStats])
 
   // Load monetization settings on mount
