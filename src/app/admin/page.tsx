@@ -24,7 +24,7 @@ interface AdminUser {
 interface DiagnosticsData {
   database: string
   clerk: string
-  stripe: string
+  razorpay: string
   googleAnalytics: string
   clarity: string
   googleSearchConsole: string
@@ -71,7 +71,7 @@ export default function AdminDashboard() {
     diagnostics: {
       database: 'Checking...',
       clerk: 'Checking...',
-      stripe: 'Checking...',
+      razorpay: 'Checking...',
       googleAnalytics: 'Not connected',
       clarity: 'Not connected',
       googleSearchConsole: 'Not connected',
@@ -393,7 +393,7 @@ export default function AdminDashboard() {
                     {/* Total Revenue */}
                     <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
                       <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Stripe Total Revenue</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Razorpay Total Revenue</span>
                         <h3 className="text-xl font-black text-foreground mt-1.5">${stats.totalRevenue.toLocaleString()}</h3>
                       </div>
                       <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
@@ -672,15 +672,15 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Stripe Payment */}
+                  {/* Razorpay Payment */}
                   <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Stripe Payments Gate</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Razorpay Payments Gate</span>
                       <DollarSign className="h-4 w-4 text-purple-400" />
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.stripe === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.stripe}</span>
+                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.razorpay === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.razorpay}</span>
                     </div>
                   </div>
 
@@ -763,7 +763,7 @@ export default function AdminDashboard() {
                   <div className="flex flex-col gap-2 text-xs">
                     <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
                       <span className="text-muted-foreground">Widgets connected to live database</span>
-                      <span className="font-bold text-emerald-400">Total Users, Active Sessions, Stripe Revenue, Today Users, Today Game Plays, User behavior Doughnut, Revenue Monthly Timeline, Active platform Users list</span>
+                      <span className="font-bold text-emerald-400">Total Users, Active Sessions, Razorpay Revenue, Today Users, Today Game Plays, User behavior Doughnut, Revenue Monthly Timeline, Active platform Users list</span>
                     </div>
                     <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
                       <span className="text-muted-foreground">Widgets awaiting external integration</span>

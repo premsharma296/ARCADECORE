@@ -10,7 +10,7 @@ These widgets are backed by actual PostgreSQL database queries via Prisma Client
 
 1.  **Total Registered Users**: Queries `db.user.count()`. No offsets or mock additions.
 2.  **Live Online Users**: Queries active game sessions from the `LivePlayer` model within the last 15 minutes.
-3.  **Stripe Total Revenue**: Aggregates the sum of successful coin purchases from the `Transaction` table (`status: 'SUCCESS'`).
+3.  **Razorpay Total Revenue**: Aggregates the sum of successful coin purchases from the `Transaction` table (`status: 'SUCCESS'`).
 4.  **New Users Today**: Queries registered user accounts created in the last 24 hours.
 5.  **Games Played Today**: Counts logs written to the `GamePlay` table since midnight.
 6.  **User Behavior Doughnut Chart**: 
@@ -45,7 +45,7 @@ The new **Diagnostics** tab provides a real-time status check of active services
 
 *   **PostgreSQL Database**: Checks connection using raw ping (`db.$queryRaw`).
 *   **Clerk Auth Sync**: Verifies presence of secret keys.
-*   **Stripe Payments Gate**: Verifies presence of secret keys.
+*   **Razorpay Payments Gate**: Verifies presence of secret keys.
 *   **Google Analytics / Clarity**: Verifies tag installations.
 
 ---

@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
     const diagnostics = {
       database: dbConnected ? 'Connected' : 'Error',
       clerk: process.env.CLERK_SECRET_KEY ? 'Connected' : 'Not connected',
-      stripe: process.env.STRIPE_SECRET_KEY ? 'Connected' : 'Not connected',
+      razorpay: (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) ? 'Connected' : 'Not connected',
       googleAnalytics: 'Not connected',
       clarity: 'Not connected',
       googleSearchConsole: 'Not connected',
