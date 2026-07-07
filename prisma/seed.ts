@@ -282,7 +282,9 @@ async function main() {
     if (i % 7 === 0) categorySlugs.push('kids')
     
     const dbCategories = categorySlugs.map(slug => ({ id: categoryMap[slug].id }))
-    const dbTags = template.tagList.map(slug => ({ id: tagMap[slug].id }))
+    const dbTags = template.tagList
+      .filter(slug => tagMap[slug] !== undefined)
+      .map(slug => ({ id: tagMap[slug].id }))
 
     // All these procedural games point to a beautiful built-in Canvas dynamic procedural mini-game
     // to ensure there are no dead links, and players can enjoy them all!
