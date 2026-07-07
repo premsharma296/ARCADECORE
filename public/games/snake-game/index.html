@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Spike Snake | Play HTML5 Neon Arcade Royale</title>
+  <meta name="description" content="Play Spike Snake, the ultimate glowing HTML5 multiplayer snake game with WebRTC PeerJS multiplayer, AI bots, Battle Royale shrinking modes, and vibrant spikey neon physics.">
+  
+  <!-- Google Fonts for retro-futurism and clean UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Core Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- PeerJS Client Library for serverless peer-to-peer WebRTC multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <!-- Game Main Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Mute/Unmute Toggle -->
+  <button id="muteToggle" class="mute-toggle" aria-label="Mute Sound">
+    <!-- Volume High SVG Icon -->
+    <svg id="soundOnIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    </svg>
+    <!-- Volume Mute SVG Icon (Hidden by default) -->
+    <svg id="soundOffIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <line x1="23" y1="9" x2="17" y2="15"></line>
+      <line x1="17" y1="9" x2="23" y2="15"></line>
+    </svg>
+  </button>
+
+  <!-- LOBBY SCREEN -->
+  <div id="lobbyScreen">
+    <div class="lobby-card">
+      <h1 class="lobby-title">Spike Snake</h1>
+      <div id="bestScoreDisplay" class="best-score-container">Best Score: 0</div>
+      
+      <!-- Nickname Input Wrapper -->
+      <div class="input-wrapper">
+        <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <input type="text" id="nicknameInput" class="nickname-input" placeholder="Enter nickname..." maxlength="15" value="Player">
+      </div>
+
+      <!-- Skin Carousel Selector -->
+      <div class="skin-selector">
+        <div class="skin-header">
+          <button type="button" id="prevSkinBtn" class="skin-btn" aria-label="Previous Skin">&lt;</button>
+          <span id="skinNameDisplay" class="skin-name">Classic Green</span>
+          <button type="button" id="nextSkinBtn" class="skin-btn" aria-label="Next Skin">&gt;</button>
+        </div>
+        <div class="skin-preview-box">
+          <canvas id="skinPreviewCanvas" class="skin-preview-canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Mode & Control Selectors Row -->
+      <div class="selectors-row">
+        <div id="modeSelectBtn" class="selector-box active mode-br">Mode: Battle Royale</div>
+        <div id="ctrlSelectBtn" class="selector-box active">Ctrl: Mouse</div>
+      </div>
+
+      <!-- Online Multiplayer Panel -->
+      <div class="multiplayer-panel">
+        <div class="mp-title">Online Multiplayer</div>
+        <div class="mp-row">
+          <button type="button" id="hostRoomBtn" class="online-btn">Host Room</button>
+          <button type="button" id="joinModeBtn" class="online-btn">Join Room</button>
+        </div>
+        
+        <!-- Join input field (hidden by default) -->
+        <div id="joinInputRow" class="room-input-container" style="display: none;">
+          <input type="text" id="roomCodeInput" class="room-input" placeholder="Enter Room Code..." maxlength="25">
+          <button type="button" id="roomConnectBtn" class="room-connect-btn">Connect</button>
+        </div>
+        
+        <!-- Connection Status -->
+        <div id="connectionStatus" class="status-message">Offline (Local Play)</div>
+      </div>
+
+      <!-- Play Button -->
+      <button id="playBtn" class="play-btn">PLAY NOW</button>
+
+      <!-- Lobby Footer Links -->
+      <div class="footer-buttons">
+        <span id="shareBtn" class="footer-link">Share Game</span>
+        <span id="inviteBtn" class="footer-link">Invite Friends</span>
+      </div>
+      <div class="copyright">&copy; 2026 ArcadeCore. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- HUD IN-GAME OVERLAY -->
+  <div id="hudOverlay">
+    <!-- Scoreboard details (Top Left) -->
+    <div class="hud-panel score-panel">
+      <div class="score-title">Score</div>
+      <div id="currentScore" class="score-value">0</div>
+      <div class="high-score-val">Best: <span id="hudBestScore">0</span></div>
+      <div class="score-title" style="margin-top: 4px; font-size: 0.65rem;">Boost Energy</div>
+      <div class="boost-meter-container">
+        <div id="boostMeterFill" class="boost-meter-fill"></div>
+      </div>
+    </div>
+
+    <!-- Battle Royale ring status & alive (Top Center) -->
+    <div id="brStatusPanel" class="hud-panel br-panel">
+      <div class="br-item">
+        <span class="br-item-label">Alive</span>
+        <span id="brAliveCount" class="br-item-value br-alive">50</span>
+      </div>
+      <div class="br-item">
+        <span class="br-item-label">Safe Zone</span>
+        <span id="brTimer" class="br-item-value br-ring">0:00</span>
+      </div>
+    </div>
+
+    <!-- Real-time Leaderboard (Top Right) -->
+    <div class="hud-panel leaderboard-panel">
+      <div class="leaderboard-title">Leaderboard</div>
+      <ol id="leaderboardList" class="leaderboard-list">
+        <!-- populated dynamically by game.js -->
+      </ol>
+    </div>
+
+    <!-- Minimap (Bottom Right) -->
+    <div class="hud-panel minimap-panel">
+      <canvas id="minimapCanvas" class="minimap-canvas"></canvas>
+    </div>
+
+    <!-- Control Hints (Bottom Center) -->
+    <div id="controlHint" class="controls-hint">Move mouse to steer. Hold click to boost.</div>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div id="gameOverScreen" style="display: none; opacity: 0;">
+    <div class="gameover-card">
+      <h2 class="gameover-title">WASTED</h2>
+      
+      <div class="gameover-stats">
+        <div class="stat-row">
+          <span class="stat-label">Final Score</span>
+          <span id="goScore" class="stat-value highlight-blue">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Snakes Terminated</span>
+          <span id="goKills" class="stat-value highlight-yellow">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Final Standing</span>
+          <span id="goRank" class="stat-value highlight-green">#1</span>
+        </div>
+      </div>
+
+      <button id="restartBtn" class="gameover-btn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- Core Scripts -->
+  <script src="sound.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
