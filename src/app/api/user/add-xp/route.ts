@@ -11,12 +11,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { xp } = await req.json()
+    // Enforce server-side security capping (max 300 XP per gameplay session) to prevent level cheats
+    const secureXp = Math.min(Math.max(xp || 0, 0), 300)
 
     try {
       const user = await db.user.update({
         where: { id: userId },
         data: {
-          xp: { increment: xp }
+          xp: { increment: secureXp }
         }
       })
 

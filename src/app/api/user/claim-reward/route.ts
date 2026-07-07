@@ -71,36 +71,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'You have already claimed your daily reward!' }, { status: 400 })
     }
 
+    // Server-side validation list of sector rewards to prevent client spoofing
+    const VALID_SECTORS = [
+      { label: '50 XP', value: 50, type: 'xp' },
+      { label: '2x Coins', value: 150, type: 'coins' },
+      { label: '100 XP', value: 100, type: 'xp' },
+      { label: 'Try Again', value: 0, type: 'miss' },
+      { label: '500 XP', value: 500, type: 'xp' },
+      { label: 'Secret Box', value: 400, type: 'coins' },
+      { label: '250 XP', value: 250, type: 'xp' },
+      { label: 'Jackpot Badge', value: 0, type: 'badge' },
+    ]
+
+    const matchedSector = VALID_SECTORS.find(s => s.label === rewardType)
+    if (!matchedSector) {
+      return NextResponse.json({ error: 'Invalid reward sector requested' }, { status: 400 })
+    }
+
+    const secureAmount = matchedSector.value
+    const secureType = matchedSector.type
+
     // 2. Log claim history
     const log = await db.dailyRewardClaim.create({
       data: {
         userId,
         rewardType,
-        amount: amount || 0
+        amount: secureAmount
       }
     })
 
     // 3. Update user balances (XP or Coins)
-    const isXp = rewardType.toLowerCase().includes('xp')
-    const isCoins = rewardType.toLowerCase().includes('coins') || rewardType.toLowerCase().includes('secret box')
-
     let updatedUser = null
-    if (isXp) {
+    if (secureType === 'xp') {
       updatedUser = await db.user.update({
         where: { id: userId },
-        data: { xp: { increment: amount || 50 } }
+        data: { xp: { increment: secureAmount } }
       })
-    } else if (isCoins) {
-      let awardCoins = amount || 100
-      if (rewardType === '2x Coins') awardCoins = 150
-      if (rewardType === 'Secret Box') awardCoins = 400
-
+    } else if (secureType === 'coins') {
       updatedUser = await db.user.update({
         where: { id: userId },
-        data: { coins: { increment: awardCoins } }
+        data: { coins: { increment: secureAmount } }
       })
     } else {
-      // Catch-all: award a base 50 XP if it's Try Again or Jackpot Badge
+      // Award base 50 XP for miss / badge
       updatedUser = await db.user.update({
         where: { id: userId },
         data: { xp: { increment: 50 } }

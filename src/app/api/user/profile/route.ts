@@ -86,8 +86,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'buy') {
-      if (!borderId || typeof cost !== 'number') {
-        return NextResponse.json({ error: 'Missing borderId or cost parameter' }, { status: 400 })
+      if (!borderId) {
+        return NextResponse.json({ error: 'Missing borderId parameter' }, { status: 400 })
+      }
+
+      // Server-side border pricing registry to prevent client-side cost spoofing
+      const BORDER_PRICES: { [key: string]: number } = {
+        'cyber-green': 250,
+        'outrun-pink': 500,
+        'gold-crown': 1000,
+        'rainbow-shift': 2000
+      }
+
+      const trueCost = BORDER_PRICES[borderId]
+      if (trueCost === undefined) {
+        return NextResponse.json({ error: 'Invalid border cosmetic ID' }, { status: 400 })
       }
 
       // Check if user already owns it
@@ -97,7 +110,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Check if user has sufficient coins
-      if (user.coins < cost) {
+      if (user.coins < trueCost) {
         return NextResponse.json({ error: 'Insufficient coins balance' }, { status: 400 })
       }
 
@@ -106,7 +119,7 @@ export async function POST(req: NextRequest) {
       const updated = await db.user.update({
         where: { id: userId },
         data: {
-          coins: { decrement: cost },
+          coins: { decrement: trueCost },
           unlockedBorders: newUnlocked
         }
       })
