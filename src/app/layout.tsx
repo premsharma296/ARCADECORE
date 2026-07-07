@@ -3,6 +3,7 @@ import { Orbitron, Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import AuthSync from "@/components/auth-sync";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const orbitron = Orbitron({
@@ -42,6 +43,7 @@ export default function RootLayout({
         <body className="min-h-full flex flex-col font-sans bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
           <ThemeProvider>
             <AuthSync />
+            <Analytics />
             {children}
           </ThemeProvider>
         </body>
