@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/app-shell'
-import { Coins, ShieldCheck, ShoppingBag, Palette, AlertCircle, Sparkles, Check } from 'lucide-react'
+import { Coins, ShieldCheck, ShoppingBag, Palette, AlertCircle, Sparkles, Check, Eye } from 'lucide-react'
 import { sound } from '@/lib/sound'
 import { useUser } from '@clerk/nextjs'
 import confetti from 'canvas-confetti'
@@ -14,6 +14,9 @@ interface BorderCosmetic {
   glowClass: string
   description: string
   borderStyle: string
+  borderClass?: string
+  rarity: string
+  rarityColor: string
 }
 
 const COSMETICS_LIST: BorderCosmetic[] = [
@@ -23,7 +26,9 @@ const COSMETICS_LIST: BorderCosmetic[] = [
     cost: 250,
     glowClass: 'shadow-[0_0_15px_rgba(34,197,94,0.6)] border-green-500',
     description: 'Neon hacker aesthetics with high contrast green glow.',
-    borderStyle: 'border-2 border-green-500'
+    borderStyle: 'border-2 border-green-500',
+    rarity: 'Common',
+    rarityColor: 'bg-green-500/10 text-green-400 border-green-500/20'
   },
   {
     id: 'outrun-pink',
@@ -31,7 +36,20 @@ const COSMETICS_LIST: BorderCosmetic[] = [
     cost: 500,
     glowClass: 'shadow-[0_0_15px_rgba(236,72,153,0.6)] border-pink-500',
     description: 'Vaporwave theme pink frame. Matches outrun arcade speeds.',
-    borderStyle: 'border-2 border-pink-500 animate-pulse'
+    borderStyle: 'border-2 border-pink-500 animate-pulse',
+    rarity: 'Rare',
+    rarityColor: 'bg-pink-500/10 text-pink-400 border-pink-500/20'
+  },
+  {
+    id: 'cyberpunk-glitch',
+    name: 'Cyberpunk Glitch',
+    cost: 750,
+    glowClass: 'shadow-[0_0_15px_rgba(244,63,94,0.6)]',
+    description: 'Glitching digital aesthetics with high-frequency neon color shifts.',
+    borderStyle: 'border-2 border-red-500',
+    borderClass: 'glitch-border-style',
+    rarity: 'Epic',
+    rarityColor: 'bg-rose-500/10 text-rose-400 border-rose-500/20'
   },
   {
     id: 'gold-crown',
@@ -39,7 +57,9 @@ const COSMETICS_LIST: BorderCosmetic[] = [
     cost: 1000,
     glowClass: 'shadow-[0_0_20px_rgba(234,179,8,0.8)] border-yellow-500',
     description: 'Gold crown animations for legendary leaderboard players.',
-    borderStyle: 'border-3 border-yellow-500 animate-bounce'
+    borderStyle: 'border-3 border-yellow-500 animate-bounce',
+    rarity: 'Legendary',
+    rarityColor: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
   },
   {
     id: 'rainbow-shift',
@@ -47,7 +67,20 @@ const COSMETICS_LIST: BorderCosmetic[] = [
     cost: 2000,
     glowClass: 'shadow-[0_0_25px_rgba(168,85,247,0.8)] border-purple-500',
     description: 'Legendary dynamic shifting RGB spectrum border.',
-    borderStyle: 'border-3 border-transparent bg-clip-border bg-gradient-to-r from-red-500 via-green-500 via-blue-500 to-yellow-500'
+    borderStyle: 'border-3 border-transparent bg-clip-border bg-gradient-to-r from-red-500 via-green-500 via-blue-500 to-yellow-500',
+    rarity: 'Ultimate',
+    rarityColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+  },
+  {
+    id: 'cosmic-nebula',
+    name: 'Cosmic Nebula Chroma',
+    cost: 3000,
+    glowClass: 'shadow-[0_0_25px_rgba(139,92,246,0.8)]',
+    description: 'Deep cosmic rotating stellar dust gradient frame.',
+    borderStyle: 'border-3 border-transparent bg-clip-border bg-gradient-to-tr from-purple-600 via-pink-600 to-blue-600',
+    borderClass: 'nebula-border-style',
+    rarity: 'Mythic',
+    rarityColor: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
   }
 ]
 
@@ -56,12 +89,13 @@ export default function ShopPage() {
   const [coins, setCoins] = useState(100)
   const [unlockedBorders, setUnlockedBorders] = useState<string[]>(['none'])
   const [equippedBorder, setEquippedBorder] = useState('none')
+  const [previewBorderId, setPreviewBorderId] = useState('none')
   
-  // Stripe modal state
+  // Processing states
   const [isProcessingStripe, setIsProcessingStripe] = useState(false)
   const [stripeSuccessMessage, setStripeSuccessMessage] = useState<string | null>(null)
 
-  // Fetch real-time coins, unlocked items, and equipped styles from database on mount
+  // Fetch profiles on mount
   useEffect(() => {
     if (!isSignedIn) return
 
@@ -73,8 +107,8 @@ export default function ShopPage() {
           const unlockedList = data.unlockedBorders.split(',')
           setUnlockedBorders(unlockedList)
           setEquippedBorder(data.equippedBorder)
+          setPreviewBorderId(data.equippedBorder)
           
-          // Write local storage as a cache fallback to notify header/shells immediately
           localStorage.setItem('arcadecore_coins', data.coins.toString())
           localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(unlockedList))
           localStorage.setItem('arcadecore_equipped_border', data.equippedBorder)
@@ -106,15 +140,15 @@ export default function ShopPage() {
     })
   }
 
-  // Razorpay Checkout Integration
+  // Razorpay Order Creation & Verification
   const handleBuyCoins = async (amount: number, price: number) => {
     if (!isSignedIn) {
       alert('Please log in with Clerk to make purchases!')
       return
     }
     
-    sound.playClick()
-    setIsProcessingStripe(true) // Reuse loader state spinner
+    try { sound.playClick() } catch {}
+    setIsProcessingStripe(true)
 
     try {
       const scriptLoaded = await loadRazorpayScript()
@@ -154,9 +188,7 @@ export default function ShopPage() {
               body: JSON.stringify({
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                coins: amount,
-                price: price
+                razorpay_signature: response.razorpay_signature
               })
             })
             const verifyData = await verifyRes.json()
@@ -165,12 +197,10 @@ export default function ShopPage() {
             if (verifyData.success) {
               triggerCoinsUpdate(verifyData.coins)
               setStripeSuccessMessage(`Successfully purchased ${amount} Coins!`)
-              sound.playWin()
-              confetti({
-                particleCount: 100,
-                spread: 75,
-                origin: { y: 0.6 }
-              })
+              try {
+                sound.playWin()
+                confetti({ particleCount: 100, spread: 75, origin: { y: 0.6 } })
+              } catch {}
               setTimeout(() => {
                 setStripeSuccessMessage(null)
               }, 4000)
@@ -187,7 +217,7 @@ export default function ShopPage() {
           email: user?.emailAddresses[0]?.emailAddress || ''
         },
         theme: {
-          color: '#8b5cf6' // Violet accent matching ArcadeCore styling
+          color: '#8b5cf6'
         }
       }
 
@@ -201,10 +231,10 @@ export default function ShopPage() {
     }
   }
 
-  // Purchase cosmetic border
+  // Buy Border
   const handleBuyBorder = async (id: string, cost: number) => {
     if (coins < cost) {
-      alert('Insufficient Coins! Play more games or buy coins from the Stripe catalog.')
+      alert('Insufficient Coins! Play more games or purchase coins.')
       return
     }
 
@@ -226,12 +256,10 @@ export default function ShopPage() {
         setUnlockedBorders(unlockedList)
         localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(unlockedList))
 
-        sound.playWin()
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.6 }
-        })
+        try {
+          sound.playWin()
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } })
+        } catch {}
       } else {
         alert(data.error || 'Failed to purchase cosmetic border.')
       }
@@ -241,7 +269,7 @@ export default function ShopPage() {
     }
   }
 
-  // Equip border cosmetic
+  // Equip Border
   const handleEquipBorder = async (id: string) => {
     setIsProcessingStripe(true)
 
@@ -257,9 +285,10 @@ export default function ShopPage() {
 
       if (res.ok && data.success) {
         setEquippedBorder(id)
+        setPreviewBorderId(id)
         localStorage.setItem('arcadecore_equipped_border', id)
         window.dispatchEvent(new Event('arcadecore_border_equipped'))
-        sound.playClick()
+        try { sound.playClick() } catch {}
       } else {
         alert(data.error || 'Failed to equip border.')
       }
@@ -269,10 +298,45 @@ export default function ShopPage() {
     }
   }
 
+  // Get active border style class
+  const getBorderStyle = (borderId: string) => {
+    if (borderId === 'none') return ''
+    const item = COSMETICS_LIST.find((c) => c.id === borderId)
+    if (!item) return ''
+    
+    let className = item.borderStyle
+    if (item.borderClass) {
+      className += ` ${item.borderClass}`
+    }
+    return className
+  }
+
   return (
     <AppShell>
       <div className="max-w-4xl mx-auto flex flex-col gap-8 w-full my-2">
         
+        {/* Style block for advanced custom CSS animations */}
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes glitch-border {
+            0% { border-color: #f43f5e; box-shadow: 0 0 10px #f43f5e; }
+            33% { border-color: #06b6d4; box-shadow: 0 0 12px #06b6d4; }
+            66% { border-color: #a855f7; box-shadow: 0 0 14px #a855f7; }
+            100% { border-color: #f43f5e; box-shadow: 0 0 10px #f43f5e; }
+          }
+          .glitch-border-style {
+            animation: glitch-border 1.5s infinite linear !important;
+          }
+          @keyframes nebula-border {
+            0% { background-position: 0% 50%; box-shadow: 0 0 12px rgba(168, 85, 247, 0.7); }
+            50% { background-position: 100% 50%; box-shadow: 0 0 20px rgba(236, 72, 153, 0.9); }
+            100% { background-position: 0% 50%; box-shadow: 0 0 12px rgba(168, 85, 247, 0.7); }
+          }
+          .nebula-border-style {
+            background-size: 200% 200% !important;
+            animation: nebula-border 3s infinite ease-in-out !important;
+          }
+        `}} />
+
         {/* Page Banner Title */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-5">
           <div>
@@ -281,7 +345,7 @@ export default function ShopPage() {
               <span>Coin & Cosmetics Shop</span>
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Acquire coin balances securely via Stripe or spend coins on custom-designed retro profile borders.
+              Acquire coin balances securely via Razorpay or spend coins on custom-designed retro profile borders.
             </p>
           </div>
           
@@ -291,16 +355,55 @@ export default function ShopPage() {
           </div>
         </div>
 
+        {/* Holographic Preview Chamber Widget */}
+        <div className="p-6 rounded-3xl border border-border/40 bg-muted/10 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-transparent pointer-events-none" />
+          <div className="absolute top-4 left-4 flex items-center gap-1.5 text-primary text-[10px] font-black uppercase tracking-widest bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-md">
+            <Sparkles className="h-3 w-3 animate-spin" style={{ animationDuration: '4s' }} />
+            <span>Holographic Preview Chamber</span>
+          </div>
+
+          <div className="flex flex-col gap-2 max-w-md mt-6 md:mt-0">
+            <h3 className="text-lg font-black font-display text-foreground uppercase tracking-wide">
+              Try Before You Spend!
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Click the <strong className="text-primary">Preview</strong> eye button next to any border card to project it onto your avatar. See your future look live!
+            </p>
+          </div>
+
+          {/* Simulated Retro Profile Card */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-card border border-border/60 shadow-xl min-w-[280px] relative z-10">
+            <div className="relative flex items-center justify-center p-1.5">
+              <img
+                src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=64'}
+                alt="Avatar"
+                className={`w-16 h-16 rounded-xl object-cover bg-muted transition-all duration-300 ${getBorderStyle(previewBorderId)}`}
+                suppressHydrationWarning
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted-foreground/60 uppercase tracking-wider">Profile Avatar</span>
+              <span className="text-sm font-black text-foreground truncate max-w-[150px]">
+                {user?.username || user?.fullName || 'Guest Gamer'}
+              </span>
+              <span className="text-[10px] font-bold text-primary uppercase">
+                {previewBorderId === 'none' ? 'Default Frame' : COSMETICS_LIST.find(c => c.id === previewBorderId)?.name}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Razorpay Processing Modal Overlay */}
         {isProcessingStripe && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <div className="max-w-md w-full p-6 rounded-2xl glass border border-border flex flex-col items-center justify-center text-center gap-4 animate-pulse">
               <div className="h-10 w-10 rounded-full border-3 border-primary border-t-transparent animate-spin" />
               <h3 className="text-sm font-bold text-foreground uppercase tracking-widest">
-                Razorpay secure gateway checkout
+                Razorpay secure checkout
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Processing your secure payment transaction. Please do not close this window.
+                Processing payment order securely. Please do not refresh.
               </p>
             </div>
           </div>
@@ -322,7 +425,7 @@ export default function ShopPage() {
             <div className="flex items-center gap-2 border-b border-border/40 pb-2">
               <Coins className="h-4.5 w-4.5 text-primary" />
               <h2 className="text-xs font-bold text-foreground uppercase tracking-widest">
-                Buy Coins (Stripe Secure Payments)
+                Buy Coins (Razorpay Payments)
               </h2>
             </div>
 
@@ -394,7 +497,7 @@ export default function ShopPage() {
             <div className="mt-2 p-3.5 rounded-xl border border-border/30 bg-muted/10 text-muted-foreground flex gap-2">
               <AlertCircle className="h-4.5 w-4.5 text-muted-foreground/70 shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
-                Razorpay payment processing is active. Support UPI and Card gateways. Real-time coins will be credited upon successful completion.
+                Razorpay payment processing is active, supporting cards, net banking, and UPI networks. Coins are credited instantly to your server account upon signature verification.
               </p>
             </div>
           </div>
@@ -412,30 +515,44 @@ export default function ShopPage() {
               {/* Default Border Option */}
               <div className="p-3 rounded-xl border border-border/40 bg-muted/20 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <img
-                    src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40'}
-                    alt="Sample"
-                    className="w-10 h-10 rounded-lg object-cover bg-muted"
-                    suppressHydrationWarning
-                  />
+                  <div className="relative flex items-center justify-center p-1">
+                    <img
+                      src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40'}
+                      alt="Avatar"
+                      className="w-10 h-10 rounded-lg object-cover bg-muted"
+                      suppressHydrationWarning
+                    />
+                  </div>
                   <div>
-                    <h4 className="text-xs font-bold text-foreground">Standard Frame</h4>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <span>Standard Frame</span>
+                      <span className="px-1.5 py-0.5 rounded text-[8px] bg-muted border border-border/60 text-muted-foreground font-semibold">Base</span>
+                    </h4>
                     <p className="text-[9px] text-muted-foreground">Original profile format.</p>
                   </div>
                 </div>
 
-                {equippedBorder === 'none' ? (
-                  <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-[10px] rounded-lg uppercase tracking-wider flex items-center gap-1">
-                    <Check className="h-3 w-3" /> Equipped
-                  </span>
-                ) : (
+                <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => handleEquipBorder('none')}
-                    className="px-3 py-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                    onClick={() => setPreviewBorderId('none')}
+                    className="p-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-primary transition-all cursor-pointer"
+                    title="Preview Frame"
                   >
-                    Equip
+                    <Eye className="h-3.5 w-3.5" />
                   </button>
-                )}
+                  {equippedBorder === 'none' ? (
+                    <span className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-bold text-[9px] rounded-lg uppercase tracking-wider flex items-center gap-0.5">
+                      <Check className="h-3 w-3" /> Active
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleEquipBorder('none')}
+                      className="px-3 py-1.5 rounded-lg border border-border/80 hover:bg-muted text-muted-foreground hover:text-foreground font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      Equip
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Loop cosmetics */}
@@ -444,38 +561,53 @@ export default function ShopPage() {
                 const isEquipped = equippedBorder === item.id
 
                 return (
-                  <div key={item.id} className="p-3 rounded-xl border border-border/40 bg-muted/20 flex items-center justify-between">
+                  <div key={item.id} className="p-3 rounded-xl border border-border/40 bg-muted/20 flex items-center justify-between hover:border-primary/20 transition-colors">
                     <div className="flex items-center gap-2.5">
-                      <img
-                        src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40'}
-                        alt="Sample"
-                        className={`w-10 h-10 rounded-lg object-cover bg-muted ${isEquipped ? item.borderStyle : ''}`}
-                        suppressHydrationWarning
-                      />
+                      <div className="relative flex items-center justify-center p-1">
+                        <img
+                          src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40'}
+                          alt="Avatar"
+                          className={`w-10 h-10 rounded-lg object-cover bg-muted transition-all duration-300 ${isEquipped ? getBorderStyle(item.id) : ''}`}
+                          suppressHydrationWarning
+                        />
+                      </div>
                       <div>
-                        <h4 className="text-xs font-bold text-foreground">{item.name}</h4>
-                        <p className="text-[9px] text-muted-foreground leading-relaxed mt-0.5">{item.description}</p>
+                        <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          <span>{item.name}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] border font-bold uppercase tracking-wide ${item.rarityColor}`}>
+                            {item.rarity}
+                          </span>
+                        </h4>
+                        <p className="text-[9px] text-muted-foreground leading-relaxed mt-0.5 max-w-[200px]">{item.description}</p>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setPreviewBorderId(item.id)}
+                        className="p-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-primary transition-all cursor-pointer"
+                        title="Preview Frame"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
+                      
                       {isEquipped ? (
-                        <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-[10px] rounded-lg uppercase tracking-wider flex items-center gap-1">
-                          <Check className="h-3 w-3" /> Equipped
+                        <span className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-bold text-[9px] rounded-lg uppercase tracking-wider flex items-center gap-0.5">
+                          <Check className="h-3 w-3" /> Active
                         </span>
                       ) : isUnlocked ? (
                         <button
                           onClick={() => handleEquipBorder(item.id)}
-                          className="px-3 py-1 rounded-lg bg-primary hover:bg-primary/95 text-white font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/95 text-white font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer shadow-sm shadow-primary/10"
                         >
                           Equip
                         </button>
                       ) : (
                         <button
                           onClick={() => handleBuyBorder(item.id, item.cost)}
-                          className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow-sm shadow-emerald-500/10"
                         >
-                          <Coins className="h-3.5 w-3.5 fill-white" />
+                          <Coins className="h-3 w-3 fill-white" />
                           <span>{item.cost}</span>
                         </button>
                       )}
