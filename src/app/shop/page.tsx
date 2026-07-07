@@ -86,51 +86,22 @@ export default function ShopPage() {
     window.dispatchEvent(new Event('arcadecore_coins_updated'))
   }
 
-  // Check for successful Stripe checkout redirect parameter pings
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const success = params.get('success')
-      const sessionId = params.get('session_id')
-      const coinsAmount = params.get('coins')
-      const pricePaid = params.get('price')
-
-      if (success === 'true' && sessionId) {
-        setIsProcessingStripe(true)
-        
-        // Call backend verification route to securely verify the payment state
-        fetch(`/api/shop/verify-session?session_id=${sessionId}`)
-          .then(res => res.json())
-          .then(data => {
-            setIsProcessingStripe(false)
-            if (data.success) {
-              triggerCoinsUpdate(data.coins)
-              setStripeSuccessMessage(`Successfully purchased ${coinsAmount} Coins for $${pricePaid}!`)
-              sound.playWin()
-              confetti({
-                particleCount: 100,
-                spread: 75,
-                origin: { y: 0.6 }
-              })
-              // Clear URL search params
-              window.history.replaceState({}, document.title, window.location.pathname)
-              
-              setTimeout(() => {
-                setStripeSuccessMessage(null)
-              }, 4000)
-            } else {
-              alert(data.error || 'Payment verification failed.')
-            }
-          })
-          .catch(() => {
-            setIsProcessingStripe(false)
-            alert('Error verifying your Stripe payment.')
-          })
+  // Load Razorpay dynamic script helper
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true)
+        return
       }
-    } catch {}
-  }, [])
+      const script = document.createElement('script')
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+      script.onload = () => resolve(true)
+      script.onerror = () => resolve(false)
+      document.body.appendChild(script)
+    })
+  }
 
-  // Stripe Checkout Integration
+  // Razorpay Checkout Integration
   const handleBuyCoins = async (amount: number, price: number) => {
     if (!isSignedIn) {
       alert('Please log in with Clerk to make purchases!')
@@ -138,9 +109,16 @@ export default function ShopPage() {
     }
     
     sound.playClick()
-    setIsProcessingStripe(true)
+    setIsProcessingStripe(true) // Reuse loader state spinner
 
     try {
+      const scriptLoaded = await loadRazorpayScript()
+      if (!scriptLoaded) {
+        setIsProcessingStripe(false)
+        alert('Failed to load Razorpay payment SDK. Check your internet connection.')
+        return
+      }
+
       const res = await fetch('/api/shop/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,16 +126,73 @@ export default function ShopPage() {
       })
 
       const data = await res.json()
-      if (res.ok && data.url) {
-        // Redirect user securely to Stripe hosted Checkout page
-        window.location.href = data.url
-      } else {
+      if (!res.ok || !data.id) {
         setIsProcessingStripe(false)
-        alert(data.error || 'Failed to initialize Stripe checkout session.')
+        alert(data.error || 'Failed to initialize payment order.')
+        return
       }
+
+      const options = {
+        key: data.keyId,
+        amount: data.amount,
+        currency: data.currency,
+        name: 'ArcadeCore Coin Shop',
+        description: `Purchase ${amount.toLocaleString()} Arcade Coins`,
+        image: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=200',
+        order_id: data.id,
+        handler: async function (response: any) {
+          setIsProcessingStripe(true)
+          try {
+            const verifyRes = await fetch('/api/shop/verify-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature,
+                coins: amount,
+                price: price
+              })
+            })
+            const verifyData = await verifyRes.json()
+            setIsProcessingStripe(false)
+            
+            if (verifyData.success) {
+              triggerCoinsUpdate(verifyData.coins)
+              setStripeSuccessMessage(`Successfully purchased ${amount} Coins!`)
+              sound.playWin()
+              confetti({
+                particleCount: 100,
+                spread: 75,
+                origin: { y: 0.6 }
+              })
+              setTimeout(() => {
+                setStripeSuccessMessage(null)
+              }, 4000)
+            } else {
+              alert(verifyData.error || 'Payment signature verification failed.')
+            }
+          } catch {
+            setIsProcessingStripe(false)
+            alert('Error verifying payment with server.')
+          }
+        },
+        prefill: {
+          name: user?.fullName || '',
+          email: user?.emailAddresses[0]?.emailAddress || ''
+        },
+        theme: {
+          color: '#8b5cf6' // Violet accent matching ArcadeCore styling
+        }
+      }
+
+      setIsProcessingStripe(false)
+      const rzp = new (window as any).Razorpay(options)
+      rzp.open()
+
     } catch (e) {
       setIsProcessingStripe(false)
-      alert('Network error connecting to Stripe checkout page.')
+      alert('Network error connecting to payment gateway.')
     }
   }
 

@@ -1,48 +1,41 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import Stripe from 'stripe'
+import crypto from 'crypto'
 import db from '@/lib/db'
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(req.url)
-    const sessionId = searchParams.get('session_id')
+    const body = await req.json()
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature, coins, price } = body
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return NextResponse.json({ error: 'Missing payment verification credentials' }, { status: 400 })
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: 'Stripe secret key not configured' }, { status: 500 })
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return NextResponse.json({ error: 'Razorpay secret key not configured' }, { status: 500 })
     }
 
-    // Lazy instantiate Stripe inside handler to prevent Next.js build-time constructor crashes
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+    // 1. Verify Razorpay Payment Signature (HMAC SHA256)
+    const text = `${razorpay_order_id}|${razorpay_payment_id}`
+    const generatedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(text)
+      .digest('hex')
 
-    // 1. Retrieve the checkout session from Stripe
-    const session = await stripe.checkout.sessions.retrieve(sessionId)
-
-    if (session.payment_status !== 'paid') {
-      return NextResponse.json({ error: 'Payment has not been completed' }, { status: 400 })
+    if (generatedSignature !== razorpay_signature) {
+      return NextResponse.json({ error: 'Payment signature mismatch (unauthorized)' }, { status: 400 })
     }
 
-    // Verify user ID in metadata matches current user
-    if (session.metadata?.userId !== userId) {
-      return NextResponse.json({ error: 'User session mismatch' }, { status: 403 })
-    }
-
-    const coinsToCredit = parseInt(session.metadata?.coins || '0', 10)
-    const priceAmount = parseFloat(session.metadata?.price || '0')
-
-    // 2. Check if this checkout session has already been processed (deduplication)
+    // 2. Prevent double-crediting (check if payment_id has already been processed)
     try {
       const existingTx = await db.transaction.findUnique({
-        where: { id: sessionId }
+        where: { id: razorpay_payment_id }
       })
 
       if (existingTx) {
@@ -57,15 +50,15 @@ export async function GET(req: NextRequest) {
       }
     } catch {}
 
-    // 3. Create a transaction row and increment user coins balance persistently
+    // 3. Create transaction record and credit user coins balance persistently
     let updatedXp = 0
     try {
       await db.transaction.create({
         data: {
-          id: sessionId, // Use Stripe session ID as transaction ID to guarantee deduplication
+          id: razorpay_payment_id, // Use unique Razorpay Payment ID as transaction ID to guarantee deduplication
           userId,
-          amount: priceAmount,
-          coins: coinsToCredit,
+          amount: parseFloat(price || '0'),
+          coins: parseInt(coins || '0', 10),
           status: 'SUCCESS'
         }
       })
@@ -73,12 +66,12 @@ export async function GET(req: NextRequest) {
       const user = await db.user.update({
         where: { id: userId },
         data: {
-          xp: { increment: coinsToCredit }
+          xp: { increment: parseInt(coins || '0', 10) }
         }
       })
       updatedXp = user.xp
     } catch (e: any) {
-      console.error('Database write failed during Stripe checkout verification:', e)
+      console.error('Database write failed during Razorpay payment verification:', e)
       return NextResponse.json({ error: 'Failed to write transaction' }, { status: 500 })
     }
 
@@ -87,7 +80,7 @@ export async function GET(req: NextRequest) {
       coins: updatedXp
     })
   } catch (error: any) {
-    console.error('Stripe verification failed:', error)
+    console.error('Razorpay verification failed:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
