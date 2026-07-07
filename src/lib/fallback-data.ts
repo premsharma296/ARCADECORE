@@ -138,6 +138,26 @@ export const FALLBACK_GAMES: MockGame[] = [
     screenshots: [
       'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=500&auto=format&fit=crop'
     ]
+  },
+  {
+    id: '7',
+    title: 'Spike Snake',
+    slug: 'spike-snake',
+    description: 'A glowing multiplayer WebRTC arena snake battle. Steer your snake, consume energy pellets to grow, avoid collisions, and encircle your opponent!',
+    instructions: 'Controls: Local Co-op uses WASD and Arrows. Online PvP utilizes zero-latency direct WebRTC connection. Collect glowing energy dots to expand and grow!',
+    controls: 'Player 1: Mouse or WASD to navigate. Space to Boost.\nPlayer 2: Arrow keys to navigate. Enter to Boost.',
+    iframeUrl: '/games/spike-snake',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=400&auto=format&fit=crop',
+    bannerUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=1200&auto=format&fit=crop',
+    playCount: 4200,
+    rating: 4.8,
+    isFeatured: true,
+    isSponsored: false,
+    categories: [{ name: 'Multiplayer', slug: 'multiplayer' }, { name: 'Arcade', slug: 'arcade' }, { name: 'Action', slug: 'action' }],
+    tags: [{ name: 'Neon', slug: 'neon' }, { name: 'WebGL', slug: 'webgl' }],
+    screenshots: [
+      'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=500&auto=format&fit=crop'
+    ]
   }
 ]
 

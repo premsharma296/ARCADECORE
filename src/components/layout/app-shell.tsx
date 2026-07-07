@@ -10,8 +10,13 @@ import { Volume2, VolumeX } from 'lucide-react'
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isMusicPlaying, setIsMusicPlaying] = useState(false)
+  const [isEmbedded, setIsEmbedded] = useState(false)
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsEmbedded(window.self !== window.top)
+    }
+
     // Check local storage setting
     const savedMusic = localStorage.getItem('arcadecore_bg_music')
     if (savedMusic === 'true') {
@@ -45,6 +50,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.setItem('arcadecore_bg_music', 'true')
       setIsMusicPlaying(true)
     }
+  }
+
+  if (isEmbedded) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-white font-sans scanlines">
+        {/* Cyber Grid Background */}
+        <div className="fixed inset-0 cyber-grid pointer-events-none z-0" />
+        
+        {/* Glow overlays */}
+        <div className="fixed -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-primary/5 blur-[120px] pointer-events-none z-0" />
+        <div className="fixed top-1/2 -right-40 w-[500px] h-[500px] rounded-full bg-secondary/5 blur-[100px] pointer-events-none z-0" />
+
+        <div className="flex flex-1 relative z-10 w-full mx-auto p-0">
+          {children}
+        </div>
+      </div>
+    )
   }
 
   return (
