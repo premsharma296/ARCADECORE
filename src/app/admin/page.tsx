@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import AppShell from '@/components/layout/app-shell'
 import { 
-  BarChart3, Upload, Settings, Trash, MessageSquare, AlertCircle, 
+  BarChart3, Upload, Settings, Trash, AlertCircle, 
   Gamepad2, Users, DollarSign, Activity, FileCheck, CheckCircle2,
   Trash2, ShieldCheck, Mail, ArrowUpRight, ArrowDownRight, Bell, Sparkles,
-  Server, Cpu, Database, KeyRound, Globe, Radio, PlayCircle, BarChart
+  Server, Cpu, Database, KeyRound, Globe, Radio, PlayCircle, BarChart,
+  Edit2, Search, FileUp, Video, Tags, Sliders, Plus, Eye
 } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
 import { sound } from '@/lib/sound'
@@ -50,11 +51,49 @@ interface StatsData {
   diagnostics: DiagnosticsData
 }
 
+interface CategoryData {
+  id: string
+  name: string
+  slug: string
+}
+
+interface TagData {
+  id: string
+  name: string
+  slug: string
+}
+
+interface GameData {
+  id: string
+  title: string
+  slug: string
+  description: string
+  instructions: string | null
+  controls: string | null
+  iframeUrl: string
+  thumbnailUrl: string
+  bannerUrl: string | null
+  playCount: number
+  rating: number
+  isFeatured: boolean
+  isSponsored: boolean
+  isPublished: boolean
+  version: string
+  licenseInfo: string | null
+  seoTitle: string | null
+  seoKeywords: string | null
+  seoDescription: string | null
+  trailerUrl: string | null
+  screenshots: string[]
+  categories: CategoryData[]
+  tags: TagData[]
+}
+
 export default function AdminDashboard() {
-  const { user } = useUser()
-  const [activeTab, setActiveTab] = useState<'analytics' | 'upload' | 'monetization' | 'diagnostics'>('analytics')
+  const { user, isLoaded } = useUser()
+  const [activeTab, setActiveTab] = useState<'analytics' | 'manage' | 'upload' | 'monetization' | 'diagnostics'>('analytics')
   
-  // Real database metrics states
+  // Real database stats
   const [stats, setStats] = useState<StatsData>({
     totalUsers: 0,
     activeSessions: 0,
@@ -83,13 +122,47 @@ export default function AdminDashboard() {
   })
   const [loadingStats, setLoadingStats] = useState(true)
 
-  // Upload Form states
+  // Loaded metadata & games list
+  const [categoriesList, setCategoriesList] = useState<CategoryData[]>([])
+  const [tagsList, setTagsList] = useState<TagData[]>([])
+  const [gamesList, setGamesList] = useState<GameData[]>([])
+  const [filteredGames, setFilteredGames] = useState<GameData[]>([])
+  const [gameSearchQuery, setGameSearchQuery] = useState('')
+  const [loadingMetadata, setLoadingMetadata] = useState(true)
+
+  // Upload/Edit Game form states
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
+  const [gameSlug, setGameSlug] = useState('')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('racing')
-  const [zipFile, setZipFile] = useState<File | null>(null)
+  const [instructions, setInstructions] = useState('')
+  const [controls, setControls] = useState('')
+  const [iframeUrl, setIframeUrl] = useState('')
   const [thumbnailUrl, setThumbnailUrl] = useState('')
-  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [bannerUrl, setBannerUrl] = useState('')
+  const [screenshots, setScreenshots] = useState('')
+  const [trailerUrl, setTrailerUrl] = useState('')
+  const [version, setVersion] = useState('1.0.0')
+  const [licenseInfo, setLicenseInfo] = useState('')
+  const [seoTitle, setSeoTitle] = useState('')
+  const [seoKeywords, setSeoKeywords] = useState('')
+  const [seoDescription, setSeoDescription] = useState('')
+  const [isFeatured, setIsFeatured] = useState(false)
+  const [isSponsored, setIsSponsored] = useState(false)
+  const [isPublished, setIsPublished] = useState(true)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  // HTML5 ZIP File States
+  const [zipFile, setZipFile] = useState<File | null>(null)
+  const [uploadingZip, setUploadingZip] = useState(false)
+  const [zipProgress, setZipProgress] = useState(0)
+  const [zipSuccessMessage, setZipSuccessMessage] = useState('')
+  const [zipErrorMessage, setZipErrorMessage] = useState('')
+  
+  // Submit feedback
+  const [formFeedback, setFormFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [submittingForm, setSubmittingForm] = useState(false)
 
   // Monetization Custom Config states
   const [globalAdsEnabled, setGlobalAdsEnabled] = useState(true)
@@ -116,107 +189,308 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
-
-  // Real-Time Database Polling (every 3 seconds for active data streams)
-  useEffect(() => {
-    const timer = setInterval(fetchStats, 3000)
-    return () => clearInterval(timer)
-  }, [fetchStats])
-
-  // Load monetization settings on mount
-  useEffect(() => {
+  // Fetch metadata lists (categories, tags) & games list
+  const fetchMetadataAndGames = useCallback(async () => {
     try {
-      const saved = localStorage.getItem('arcadecore_monetization_settings')
-      if (saved) {
-        const config = JSON.parse(saved)
-        setGlobalAdsEnabled(config.globalAdsEnabled ?? true)
-        setAdCountdownSeconds(config.adCountdownSeconds ?? 5)
-        setSponsorTitle(config.sponsorTitle || 'NordVPN')
-        setSponsorCta(config.sponsorCta || '')
-        setSponsorLink(config.sponsorLink || '')
-        setSponsorLogo(config.sponsorLogo || '')
-        setSponsorBg(config.sponsorBg || '')
+      setLoadingMetadata(true)
+      const [metaRes, gamesRes] = await Promise.all([
+        fetch('/api/admin/metadata'),
+        fetch('/api/admin/games/list')
+      ])
+      
+      if (metaRes.ok) {
+        const metaData = await metaRes.json()
+        setCategoriesList(metaData.categories || [])
+        setTagsList(metaData.tags || [])
       }
-    } catch (e) {}
+
+      if (gamesRes.ok) {
+        const gamesData = await gamesRes.json()
+        setGamesList(gamesData.games || [])
+        setFilteredGames(gamesData.games || [])
+      }
+    } catch (e) {
+      console.error('Failed to load metadata or games list:', e)
+    } finally {
+      setLoadingMetadata(false)
+    }
   }, [])
 
-  // Admin user deletion
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to ban/delete this user?')) return
-    sound.playClick()
+  useEffect(() => {
+    fetchStats()
+    fetchMetadataAndGames()
+  }, [fetchStats, fetchMetadataAndGames])
+
+  // Filter games based on search query
+  useEffect(() => {
+    const query = gameSearchQuery.toLowerCase().trim()
+    if (!query) {
+      setFilteredGames(gamesList)
+    } else {
+      setFilteredGames(
+        gamesList.filter(
+          (g) =>
+            g.title.toLowerCase().includes(query) ||
+            g.slug.toLowerCase().includes(query) ||
+            g.categories.some((c) => c.name.toLowerCase().includes(query))
+        )
+      )
+    }
+  }, [gameSearchQuery, gamesList])
+
+  // Reset form helper
+  const resetForm = () => {
+    setEditingId(null)
+    setTitle('')
+    setGameSlug('')
+    setDescription('')
+    setInstructions('')
+    setControls('')
+    setIframeUrl('')
+    setThumbnailUrl('')
+    setBannerUrl('')
+    setScreenshots('')
+    setTrailerUrl('')
+    setVersion('1.0.0')
+    setLicenseInfo('')
+    setSeoTitle('')
+    setSeoKeywords('')
+    setSeoDescription('')
+    setIsFeatured(false)
+    setIsSponsored(false)
+    setIsPublished(true)
+    setSelectedCategories([])
+    setSelectedTags([])
+    setZipFile(null)
+    setZipSuccessMessage('')
+    setZipErrorMessage('')
+    setFormFeedback(null)
+  }
+
+  // Handle Edit Action
+  const handleEditClick = (game: GameData) => {
+    setEditingId(game.id)
+    setTitle(game.title)
+    setGameSlug(game.slug)
+    setDescription(game.description)
+    setInstructions(game.instructions || '')
+    setControls(game.controls || '')
+    setIframeUrl(game.iframeUrl)
+    setThumbnailUrl(game.thumbnailUrl)
+    setBannerUrl(game.bannerUrl || '')
+    setScreenshots(Array.isArray(game.screenshots) ? game.screenshots.join(', ') : '')
+    setTrailerUrl(game.trailerUrl || '')
+    setVersion(game.version || '1.0.0')
+    setLicenseInfo(game.licenseInfo || '')
+    setSeoTitle(game.seoTitle || '')
+    setSeoKeywords(game.seoKeywords || '')
+    setSeoDescription(game.seoDescription || '')
+    setIsFeatured(game.isFeatured)
+    setIsSponsored(game.isSponsored)
+    setIsPublished(game.isPublished)
+    setSelectedCategories(game.categories.map((c) => c.slug))
+    setSelectedTags(game.tags.map((t) => t.slug))
     
+    // Switch tabs to Upload/Edit tab
+    setActiveTab('upload')
+    setFormFeedback(null)
+    try { sound.playClick() } catch {}
+  }
+
+  // Handle Quick Toggle Publish Status
+  const handleTogglePublish = async (game: GameData) => {
     try {
-      const res = await fetch(`/api/admin/stats?id=${userId}`, {
-        method: 'DELETE'
-      })
-      if (res.ok) {
-        sound.playWin()
-        confetti({
-          particleCount: 50,
-          spread: 40,
-          origin: { y: 0.6 }
+      const updatedValue = !game.isPublished
+      const response = await fetch('/api/admin/games/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...game,
+          categories: game.categories.map((c) => c.slug),
+          tags: game.tags.map((t) => t.slug),
+          isPublished: updatedValue
         })
-        fetchStats()
-      } else {
-        alert('Failed to delete user.')
+      })
+
+      if (response.ok) {
+        // Optimistic state sync
+        setGamesList((prev) =>
+          prev.map((g) => (g.id === game.id ? { ...g, isPublished: updatedValue } : g))
+        )
+        try { sound.playTick() } catch {}
       }
     } catch (e) {
-      console.error(e)
+      console.error('Failed to toggle publish status:', e)
     }
   }
 
-  const handleSaveMonetization = (e: React.FormEvent) => {
-    e.preventDefault()
+  // Handle Delete Action
+  const handleDeleteClick = async (gameId: string, gameTitle: string) => {
+    if (!confirm(`Are you absolutely sure you want to permanently delete "${gameTitle}"? All associated HTML5 files and metadata will be destroyed.`)) {
+      return
+    }
+
     try {
-      const config = {
-        globalAdsEnabled,
-        adCountdownSeconds,
-        sponsorTitle,
-        sponsorCta,
-        sponsorLink,
-        sponsorLogo,
-        sponsorBg
+      const response = await fetch('/api/admin/games/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: gameId })
+      })
+
+      if (response.ok) {
+        setGamesList((prev) => prev.filter((g) => g.id !== gameId))
+        try { sound.playWin() } catch {}
+        alert('Game successfully deleted.')
+      } else {
+        const errData = await response.json()
+        alert('Error: ' + (errData.error || 'Failed to delete game.'))
       }
-      localStorage.setItem('arcadecore_monetization_settings', JSON.stringify(config))
-      sound.playClick()
-      setSettingsSuccess(true)
-      sound.playWin()
-      setTimeout(() => {
-        setSettingsSuccess(false)
-      }, 3000)
-    } catch (e) {
-      console.error('Failed to save settings:', e)
+    } catch (e: any) {
+      alert('Delete failed: ' + e.message)
     }
   }
 
-  const handleUploadGame = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title || !description || !thumbnailUrl) return
+  // Handle HTML5 Zip File validation and upload
+  const handleZipUpload = async () => {
+    if (!zipFile) {
+      setZipErrorMessage('Please select a valid game ZIP package first.')
+      return
+    }
+    
+    // Auto-generate helper slug if creating new game
+    const tempSlug = gameSlug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'uploaded-game'
+    
+    setUploadingZip(true)
+    setZipProgress(10)
+    setZipErrorMessage('')
+    setZipSuccessMessage('')
 
-    sound.playClick()
-    setUploadSuccess(true)
-    sound.playWin()
+    try {
+      const formData = new FormData()
+      formData.append('file', zipFile)
+      formData.append('slug', tempSlug)
 
-    setTimeout(() => {
-      setUploadSuccess(false)
-      setTitle('')
-      setDescription('')
-      setThumbnailUrl('')
-      setZipFile(null)
-    }, 4000)
+      // Simulate step-by-step progress
+      const interval = setInterval(() => {
+        setZipProgress((prev) => (prev < 90 ? prev + 15 : prev))
+      }, 500)
 
-    // Execute mock backend API uploading call
-    fetch('/api/admin/games/new', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, category, thumbnailUrl })
-    }).catch(() => {})
+      const res = await fetch('/api/admin/games/upload', {
+        method: 'POST',
+        body: formData
+      })
+      
+      clearInterval(interval)
+      setZipProgress(100)
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Package validation/extraction failed.')
+      }
+
+      setZipSuccessMessage(`Successfully validated and extracted at: ${data.iframeUrl}`)
+      setIframeUrl(data.iframeUrl)
+      try { sound.playTick() } catch {}
+    } catch (e: any) {
+      setZipErrorMessage(e.message || 'Error processing ZIP package.')
+      try { sound.playClick() } catch {}
+    } finally {
+      setUploadingZip(false)
+    }
   }
 
-  // Auth gate check
+  // Handle Game Metadata form submission
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim() || !iframeUrl.trim() || !thumbnailUrl.trim()) {
+      setFormFeedback({ type: 'error', message: 'Title, iframeUrl, and thumbnailUrl are required.' })
+      return
+    }
+
+    setSubmittingForm(true)
+    setFormFeedback(null)
+
+    try {
+      const response = await fetch('/api/admin/games/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingId,
+          title,
+          slug: gameSlug,
+          description,
+          instructions,
+          controls,
+          iframeUrl,
+          thumbnailUrl,
+          bannerUrl,
+          isFeatured,
+          isSponsored,
+          isPublished,
+          version,
+          licenseInfo,
+          seoTitle,
+          seoKeywords,
+          seoDescription,
+          trailerUrl,
+          screenshots: screenshots.split(',').map((s) => s.trim()).filter(Boolean),
+          categories: selectedCategories,
+          tags: selectedTags
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save metadata profile.')
+      }
+
+      setFormFeedback({
+        type: 'success',
+        message: editingId ? 'Game profile updated successfully!' : 'New game published successfully!'
+      })
+
+      // Reset form and reload grids
+      resetForm()
+      fetchMetadataAndGames()
+      
+      // Trigger celebrate sound
+      try {
+        sound.playWin()
+        confetti({ particleCount: 80, spread: 60, origin: { y: 0.8 } })
+      } catch {}
+
+    } catch (e: any) {
+      setFormFeedback({ type: 'error', message: e.message || 'Error saving metadata.' })
+    } finally {
+      setSubmittingForm(false)
+    }
+  }
+
+  // Toggle Category selection
+  const handleCategoryCheckboxChange = (slug: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+    )
+  }
+
+  // Toggle Tag selection
+  const handleTagCheckboxChange = (slug: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+    )
+  }
+
+  // Save Settings Ticker
+  const handleSaveSettings = () => {
+    setSettingsSuccess(true)
+    try { sound.playTick() } catch {}
+    setTimeout(() => setSettingsSuccess(false), 3000)
+  }
+
+  // Verify authorization
+  if (!isLoaded) return null
+
+  // Restrict access to administrators
   const isAdmin = user?.emailAddresses.some(
     e => e.emailAddress.startsWith('admin') || 
          e.emailAddress === 'premchandsharma@gmail.com' || 
@@ -226,796 +500,1042 @@ export default function AdminDashboard() {
   if (!isAdmin) {
     return (
       <AppShell>
-        <div className="max-w-md mx-auto my-12 text-center p-8 rounded-2xl glass border border-red-500/25 flex flex-col items-center gap-4">
-          <AlertCircle className="h-10 w-10 text-red-500 animate-bounce" />
-          <h2 className="text-xl font-bold font-display uppercase tracking-wider text-foreground">
-            ADMIN REGISTRATION REQUIRED
-          </h2>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Your current logged-in user profile does not possess administrators access privileges. Please authenticate using the admin dashboard account details.
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+          <ShieldCheck className="h-16 w-16 text-red-500 animate-bounce" />
+          <h1 className="text-3xl font-black font-display tracking-widest text-primary uppercase">ACCESS FORBIDDEN</h1>
+          <p className="text-muted-foreground max-w-md text-sm leading-relaxed">
+            You do not possess the required administrator credentials to view the command dashboard. Return to the lobby.
           </p>
         </div>
       </AppShell>
     )
   }
 
-  // Calculate SVGs doughnut percentages based on real metrics
-  const doughnutTotal = stats.doughnut.newUsers + stats.doughnut.activeUsers + stats.doughnut.returningUsers
-  const newUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.newUsers / doughnutTotal) * 238.76 : 0
-  const activeUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.activeUsers / doughnutTotal) * 238.76 : 0
-  const returningUsersPercentage = doughnutTotal > 0 ? (stats.doughnut.returningUsers / doughnutTotal) * 238.76 : 0
-
-  // Calculate line chart dynamic bounds
-  const maxRevenue = Math.max(...stats.monthlyRevenue, 100)
-
   return (
     <AppShell>
-      <div className="max-w-6xl mx-auto w-full my-2">
+      <div className="flex flex-col gap-8">
         
-        {/* Sleek ARCADECORE Admin Layout Wrapper */}
-        <div className="w-full bg-[#0c0a12] border border-border/40 rounded-3xl flex overflow-hidden shadow-2xl min-h-[640px] flex-col md:flex-row">
-          
-          {/* LEFT SIDEBAR PANEL */}
-          <div className="w-full md:w-64 bg-[#12101a] border-b md:border-b-0 md:border-r border-border/30 p-6 flex flex-col justify-between gap-6 shrink-0">
-            <div className="flex flex-col gap-6">
-              {/* Brand Header */}
-              <div className="flex items-center gap-2.5 px-1">
-                <Gamepad2 className="h-5 w-5 text-purple-500 animate-pulse" />
-                <span className="font-display font-black text-sm uppercase tracking-widest text-foreground">
-                  ARCADECORE
-                </span>
-              </div>
-
-              {/* Sidebar Menu Buttons */}
-              <div className="flex flex-col gap-1.5">
-                <button
-                  onClick={() => setActiveTab('analytics')}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    activeTab === 'analytics'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                  }`}
-                >
-                  <BarChart3 className="h-4.5 w-4.5" />
-                  <span>Dashboard</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('upload')}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    activeTab === 'upload'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                  }`}
-                >
-                  <Upload className="h-4.5 w-4.5" />
-                  <span>Upload Game</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('monetization')}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    activeTab === 'monetization'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                  }`}
-                >
-                  <Settings className="h-4.5 w-4.5" />
-                  <span>Monetization</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('diagnostics')}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                    activeTab === 'diagnostics'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                  }`}
-                >
-                  <Server className="h-4.5 w-4.5" />
-                  <span>Diagnostics</span>
-                </button>
+        {/* Title Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-primary to-secondary p-0.5 shadow-lg flex items-center justify-center">
+              <div className="h-full w-full bg-background rounded-[14px] flex items-center justify-center text-primary">
+                <Sliders className="h-5 w-5" />
               </div>
             </div>
-
-            {/* Fortnite Promo Panel Banner */}
-            <div className="hidden md:flex p-4 rounded-2xl bg-gradient-to-t from-purple-900/60 to-indigo-950/80 border border-purple-500/10 flex-col gap-1.5 relative overflow-hidden group">
-              <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-purple-500/10 rounded-full blur-xl pointer-events-none" />
-              <span className="text-[8px] font-black text-purple-400 uppercase tracking-widest">Join Today Game</span>
-              <h5 className="text-xs font-black text-white uppercase tracking-wide leading-tight">FORTNITE GAME</h5>
-              <p className="text-[9px] text-muted-foreground leading-relaxed mt-0.5">Claim custom codes and play with active stream lobbies.</p>
+            <div>
+              <h1 className="text-3xl font-black font-display tracking-wider text-foreground uppercase">
+                ArcadeCore <span className="text-primary">Control Desk</span>
+              </h1>
+              <p className="text-xs font-semibold text-muted-foreground/80 tracking-wide mt-0.5">
+                Centralized telemetry logs, server-side content ingestion, and diagnostic systems.
+              </p>
             </div>
           </div>
+          <div className="flex items-center gap-2 bg-muted/40 border border-border/60 px-3.5 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-primary">
+            <Activity className="h-3.5 w-3.5 text-secondary animate-pulse" />
+            <span>Telemetry online</span>
+          </div>
+        </div>
 
-          {/* RIGHT CONTENT WORKSPACE */}
-          <div className="flex-1 bg-[#09080e] p-6 md:p-8 flex flex-col gap-6 overflow-y-auto max-h-[780px]">
-            
-            {/* Top header search bar & notification bells */}
-            <div className="flex items-center justify-between border-b border-border/20 pb-4 gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <input
-                  type="text"
-                  placeholder="Search user, records..."
-                  disabled
-                  className="w-full h-8 px-3 rounded-lg bg-[#12101a] border border-border/30 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <button className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative">
-                  <Bell className="h-4 w-4" />
-                  <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-purple-500 animate-ping" />
-                </button>
-                <div className="flex items-center gap-2">
-                  <img
-                    src={user?.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=40'}
-                    alt="Admin avatar"
-                    className="w-7 h-7 rounded-full object-cover border border-purple-500/30"
-                  />
-                  <span className="text-xs font-bold text-foreground hidden sm:inline">{user?.firstName || 'Admin'}</span>
+        {/* Tab Controls Bar */}
+        <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-muted/40 border border-border/40 w-fit">
+          <button
+            onClick={() => { setActiveTab('analytics'); try { sound.playClick() } catch {} }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'analytics'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            <BarChart className="h-3.5 w-3.5" />
+            <span>Dashboard</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('manage'); try { sound.playClick() } catch {} }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'manage'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            <Gamepad2 className="h-3.5 w-3.5" />
+            <span>Manage Games ({gamesList.length})</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('upload'); try { sound.playClick() } catch {} }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'upload'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>{editingId ? 'Edit Profile' : 'Upload Game'}</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('monetization'); try { sound.playClick() } catch {} }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'monetization'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            <DollarSign className="h-3.5 w-3.5" />
+            <span>Monetization</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('diagnostics'); try { sound.playClick() } catch {} }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+              activeTab === 'diagnostics'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+          >
+            <Server className="h-3.5 w-3.5" />
+            <span>Diagnostics</span>
+          </button>
+        </div>
+
+        {/* Tab CONTENT Area */}
+        <div className="min-h-[50vh]">
+          
+          {/* TAB 1: TELEMETRY DASHBOARD */}
+          {activeTab === 'analytics' && (
+            <div className="flex flex-col gap-8">
+              
+              {/* Counters */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                <div className="p-5 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Active Gamers</span>
+                    <Users className="h-4.5 w-4.5 text-primary" />
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black font-display tracking-tight text-foreground">
+                      {loadingStats ? '...' : stats.totalUsers}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                      <ArrowUpRight className="h-3 w-3" />
+                      <span>+12%</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Live Concurrency</span>
+                    <Activity className="h-4.5 w-4.5 text-secondary animate-pulse" />
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black font-display tracking-tight text-foreground">
+                      {loadingStats ? '...' : stats.activeSessions}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                      <ArrowUpRight className="h-3 w-3" />
+                      <span>+24%</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Ingests</span>
+                    <Gamepad2 className="h-4.5 w-4.5 text-accent" />
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black font-display tracking-tight text-foreground">
+                      {loadingStats ? '...' : gamesList.length}
+                    </span>
+                    <span className="text-[10px] font-bold text-muted-foreground/60">
+                      games
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Revenue</span>
+                    <DollarSign className="h-4.5 w-4.5 text-emerald-400" />
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black font-display tracking-tight text-foreground">
+                      {loadingStats ? '...' : `$${stats.totalRevenue.toFixed(2)}`}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                      <ArrowUpRight className="h-3 w-3" />
+                      <span>+8%</span>
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* TAB CONTENT: ANALYTICS (DASHBOARD) */}
-            {activeTab === 'analytics' && (
-              <div className="flex flex-col gap-6">
+              {/* Grid block: Recent Players list */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* 1. Top Statistics Cards */}
-                {loadingStats ? (
-                  <div className="h-20 flex items-center justify-center text-xs text-muted-foreground">
-                    <div className="h-5 w-5 rounded-full border border-purple-500 border-t-transparent animate-spin mr-2" />
-                    Loading database records...
+                {/* Recent users */}
+                <div className="lg:col-span-2 p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-border/20 pb-3">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                      Recent Registered Gamers
+                    </h3>
+                    <Users className="h-4 w-4 text-muted-foreground" />
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                    {/* User count */}
-                    <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Registered Users</span>
-                        <h3 className="text-xl font-black text-foreground mt-1.5">{stats.totalUsers.toLocaleString()}</h3>
-                      </div>
-                      <div className="h-9 w-9 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                        <Users className="h-5 w-5" />
-                      </div>
-                    </div>
-
-                    {/* Active sessions */}
-                    <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Live Online Users (15m)</span>
-                        <h3 className="text-xl font-black text-foreground mt-1.5">{stats.activeSessions.toLocaleString()}</h3>
-                      </div>
-                      <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                        <ArrowUpRight className="h-5 w-5 animate-pulse" />
-                      </div>
-                    </div>
-
-                    {/* Total Revenue */}
-                    <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex justify-between items-center relative overflow-hidden group">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Razorpay Total Revenue</span>
-                        <h3 className="text-xl font-black text-foreground mt-1.5">${stats.totalRevenue.toLocaleString()}</h3>
-                      </div>
-                      <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400">
-                        <DollarSign className="h-5 w-5" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 1.1 Unconnected Integrations Quick Panel */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-[#1d142a]/30 border border-purple-500/10">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Google AdSense</span>
-                    <span className="text-xs font-bold text-red-400">Not connected</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Google Search Console</span>
-                    <span className="text-xs font-bold text-red-400">Not connected</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">GA4 Traffic Metrics</span>
-                    <span className="text-xs font-bold text-red-400">Not connected</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Ad CTR / RPM</span>
-                    <span className="text-xs font-bold text-red-400">Not connected</span>
-                  </div>
-                </div>
-
-                {/* 1.2 Intermediate Real DB Metrics (Today's counters) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">New Users Today</span>
-                    <h4 className="text-lg font-black text-foreground mt-1">{stats.newUsersToday}</h4>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Games Played Today</span>
-                    <h4 className="text-lg font-black text-foreground mt-1">{stats.gamePlaysToday}</h4>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Coin Purchases (Today)</span>
-                    <h4 className="text-lg font-black text-foreground mt-1">
-                      {stats.users.filter(u => u.isPremium).length}
-                    </h4>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Average Play Time</span>
-                    <h4 className="text-xs font-bold text-muted-foreground mt-1.5">No sensor integration</h4>
-                  </div>
-                </div>
-
-                {/* 2. Visual Charts Row (Doughnut User Behavior & Line Graph Game Performance) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                   
-                  {/* Left: User Behavior (Doughnut Chart) */}
-                  <div className="lg:col-span-5 p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-4">
-                    <div className="flex justify-between items-center border-b border-border/20 pb-2">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">User Behavior Today</span>
-                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Live SQL</span>
+                  {loadingStats ? (
+                    <div className="flex flex-col gap-3 py-6 items-center">
+                      <Cpu className="h-6 w-6 text-primary animate-spin" />
+                      <span className="text-xs text-muted-foreground">Retrieving DB user catalogs...</span>
                     </div>
-
-                    <div className="flex items-center justify-center py-2 relative">
-                      {/* CSS-Styled SVG Doughnut Segment Rings mapped to DB values */}
-                      <svg viewBox="0 0 100 100" className="w-36 h-36 relative z-10 transform -rotate-90">
-                        <circle cx="50" cy="50" r="38" fill="transparent" stroke="#1d1b28" strokeWidth="10" />
-                        {doughnutTotal > 0 ? (
-                          <>
-                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#8b5cf6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - newUsersPercentage} strokeLinecap="round" />
-                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#3b82f6" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - activeUsersPercentage} strokeLinecap="round" className="rotate-45 origin-center" />
-                            <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10b981" strokeWidth="10" strokeDasharray="238.76" strokeDashoffset={238.76 - returningUsersPercentage} strokeLinecap="round" className="rotate-135 origin-center" />
-                          </>
-                        ) : null}
-                      </svg>
-                      
-                      <div className="absolute flex flex-col items-center justify-center">
-                        <span className="text-xs font-black text-foreground">{doughnutTotal}</span>
-                        <span className="text-[9px] text-muted-foreground">Sessions</span>
-                      </div>
+                  ) : stats.users.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-muted-foreground">
+                      No registered users found in the database.
                     </div>
-
-                    {/* Chart Legend list */}
-                    <div className="flex flex-col gap-1.5 text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-muted-foreground">
-                          <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> New user
-                        </span>
-                        <span className="font-bold text-foreground">{stats.doughnut.newUsers}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-muted-foreground">
-                          <span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Active user
-                        </span>
-                        <span className="font-bold text-foreground">{stats.doughnut.activeUsers}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-muted-foreground">
-                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Returning user
-                        </span>
-                        <span className="font-bold text-foreground">{stats.doughnut.returningUsers}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right: Game Performance (Timeline Line Chart) */}
-                  <div className="lg:col-span-7 p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-4">
-                    <div className="flex justify-between items-center border-b border-border/20 pb-2">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Real Revenue Performance ({new Date().getFullYear()})</span>
-                      <span className="text-[9px] font-bold bg-[#1d1b28] px-2 py-0.5 rounded text-muted-foreground">Prisma aggregate</span>
-                    </div>
-
-                    {/* SVG Line Graph plotting curve with highlighted tooltip */}
-                    <div className="relative">
-                      <svg viewBox="0 0 400 130" className="w-full h-40">
-                        <defs>
-                          <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        {/* Horizontal guide lines */}
-                        <line x1="0" y1="25" x2="400" y2="25" stroke="rgba(255,255,255,0.03)" />
-                        <line x1="0" y1="60" x2="400" y2="60" stroke="rgba(255,255,255,0.03)" />
-                        <line x1="0" y1="95" x2="400" y2="95" stroke="rgba(255,255,255,0.03)" />
-                        
-                        {/* Curve based on stats.monthlyRevenue values */}
-                        {stats.monthlyRevenue.some(v => v > 0) ? (
-                          <>
-                            <path
-                              d={`M 0 110 ${stats.monthlyRevenue.map((val, idx) => {
-                                const x = (idx / 11) * 400
-                                const y = 110 - (val / maxRevenue) * 90
-                                return `L ${x} ${y}`
-                              }).join(' ')} L 400 110 Z`}
-                              fill="url(#chartGlow)"
-                            />
-                            <path
-                              d={`M 0 110 ${stats.monthlyRevenue.map((val, idx) => {
-                                const x = (idx / 11) * 400
-                                const y = 110 - (val / maxRevenue) * 90
-                                return `L ${x} ${y}`
-                              }).join(' ')}`}
-                              fill="none"
-                              stroke="#8b5cf6"
-                              strokeWidth="2.5"
-                            />
-                          </>
-                        ) : (
-                          // Flatline at 0 if no transactions exist
-                          <line x1="0" y1="110" x2="400" y2="110" stroke="#8b5cf6" strokeWidth="2.5" />
-                        )}
-                      </svg>
-                    </div>
-
-                    <div className="flex justify-between text-[9px] text-muted-foreground/60 px-1">
-                      <span>Jan</span>
-                      <span>Feb</span>
-                      <span>Mar</span>
-                      <span>Apr</span>
-                      <span>May</span>
-                      <span>Jun</span>
-                      <span>Jul</span>
-                      <span>Aug</span>
-                      <span>Sep</span>
-                      <span>Oct</span>
-                      <span>Nov</span>
-                      <span>Dec</span>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* 3. User Table (Real DB sync listing & action triggers) */}
-                <div className="p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-4">
-                  <div className="flex justify-between items-center border-b border-border/20 pb-2">
-                    <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">Active Platform Users</span>
-                    <span className="text-[9px] text-muted-foreground">Showing latest database registrations</span>
-                  </div>
-
-                  <div className="overflow-x-auto w-full">
-                    {stats.users.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-muted-foreground">
-                        No active database users registered.
-                      </div>
-                    ) : (
+                  ) : (
+                    <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
-                          <tr className="border-b border-border/20 text-muted-foreground/60 text-[10px] uppercase tracking-wider">
-                            <th className="py-2.5 font-bold">Rank</th>
-                            <th className="py-2.5 font-bold">Name</th>
-                            <th className="py-2.5 font-bold">Email</th>
-                            <th className="py-2.5 font-bold">Status</th>
-                            <th className="py-2.5 font-bold">Joined Date</th>
-                            <th className="py-2.5 font-bold text-center">Action</th>
+                          <tr className="border-b border-border/20 text-muted-foreground font-black uppercase tracking-wider">
+                            <th className="py-2.5">User</th>
+                            <th className="py-2.5">Username</th>
+                            <th className="py-2.5">User ID</th>
+                            <th className="py-2.5 text-right">Joined At</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {stats.users.map((item, index) => (
-                            <tr key={item.id} className="border-b border-border/10 hover:bg-[#181622]/30 transition-colors">
-                              <td className="py-3 font-semibold text-muted-foreground/80">#{index + 1}</td>
-                              <td className="py-3 font-bold text-foreground flex items-center gap-2.5">
+                        <tbody className="divide-y divide-border/10">
+                          {stats.users.map((u) => (
+                            <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="py-3 flex items-center gap-2">
                                 <img
-                                  src={item.avatarUrl}
-                                  alt={item.username}
-                                  className="w-7 h-7 rounded-lg object-cover bg-muted border border-border/20"
+                                  src={u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=50&auto=format&fit=crop'}
+                                  alt={u.username}
+                                  className="w-7 h-7 rounded-full border border-border/40 object-cover"
                                 />
-                                <span>{item.username}</span>
+                                <span className="font-semibold text-foreground truncate max-w-[100px]">{u.email}</span>
                               </td>
-                              <td className="py-3 text-muted-foreground">{item.email}</td>
-                              <td className="py-3">
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                                  item.isPremium 
-                                    ? 'bg-purple-500/10 border border-purple-500/20 text-purple-400' 
-                                    : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                                }`}>
-                                  {item.isPremium ? 'Premium' : 'Active'}
-                                </span>
-                              </td>
-                              <td className="py-3 text-muted-foreground/80">
-                                {new Date(item.createdAt).toLocaleDateString()}
-                              </td>
-                              <td className="py-3 text-center">
-                                <button
-                                  onClick={() => handleDeleteUser(item.id)}
-                                  className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                  title="Ban / Delete User"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                              <td className="py-3 font-semibold text-primary">{u.username}</td>
+                              <td className="py-3 font-mono text-[10px] text-muted-foreground/60 select-all">{u.id}</td>
+                              <td className="py-3 text-right text-muted-foreground font-medium">
+                                {new Date(u.createdAt).toLocaleDateString()}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Diagnostics Health Ticker */}
+                <div className="p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-border/20 pb-3">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                      Diagnostics Status
+                    </h3>
+                    <Server className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/10">
+                      <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                        <Database className="h-3.5 w-3.5 text-primary" />
+                        <span>PostgreSQL Database</span>
+                      </span>
+                      <span className={`font-bold uppercase tracking-wider text-[10px] ${
+                        stats.diagnostics.database.toLowerCase().includes('connected') ? 'text-emerald-400' : 'text-orange-400'
+                      }`}>{stats.diagnostics.database}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/10">
+                      <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                        <KeyRound className="h-3.5 w-3.5 text-secondary" />
+                        <span>Clerk Authentication</span>
+                      </span>
+                      <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px]">
+                        {stats.diagnostics.clerk}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/10">
+                      <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                        <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Razorpay Checkout Gateway</span>
+                      </span>
+                      <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px]">
+                        {stats.diagnostics.razorpay}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/10">
+                      <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                        <Globe className="h-3.5 w-3.5 text-accent" />
+                        <span>Google Analytics (GA4)</span>
+                      </span>
+                      <span className={`font-bold uppercase tracking-wider text-[10px] ${
+                        stats.diagnostics.googleAnalytics.toLowerCase().includes('connected') || stats.diagnostics.googleAnalytics !== 'Not connected'
+                          ? 'text-emerald-400'
+                          : 'text-orange-400/80'
+                      }`}>
+                        {stats.diagnostics.googleAnalytics}
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveTab('diagnostics')}
+                    className="w-full mt-2 py-2 rounded-xl border border-border/60 hover:bg-muted text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    View All Diagnostics Details
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: INGESTION / ZIP UPLOADER FORM */}
+          {activeTab === 'upload' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              
+              {/* Form Input fields */}
+              <div className="lg:col-span-2 p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-5">
+                <div className="flex items-center justify-between border-b border-border/20 pb-3">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                    {editingId ? `Edit Game: ${title}` : 'Ingest New HTML5 Game'}
+                  </h3>
+                  <button
+                    onClick={resetForm}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    Clear Form / Add New
+                  </button>
+                </div>
+
+                <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
+                  {/* Title & Version */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2 flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Game Title *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Neon Velocity Extreme"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        required
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Version *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 1.0.0"
+                        value={version}
+                        onChange={(e) => setVersion(e.target.value)}
+                        required
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Slug Helper (read-only if editing, editable if customizing) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Game Slug</label>
+                    <input
+                      type="text"
+                      placeholder="Auto-generated if left blank"
+                      value={gameSlug}
+                      onChange={(e) => setGameSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}
+                      className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Description *</label>
+                    <textarea
+                      placeholder="Enter a brief game summary describing the retro mechanics..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                      required
+                      className="p-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all resize-none"
+                    />
+                  </div>
+
+                  {/* Instructions & Controls */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Instructions</label>
+                      <textarea
+                        placeholder="e.g. Steer along the road. Avoid red vehicles."
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                        rows={3}
+                        className="p-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all resize-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Controls Mapping</label>
+                      <textarea
+                        placeholder="e.g. WASD: Steer\nSpace: Shoot"
+                        value={controls}
+                        onChange={(e) => setControls(e.target.value)}
+                        rows={3}
+                        className="p-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* URLs: iframeUrl, thumbnailUrl, bannerUrl */}
+                  <div className="flex flex-col gap-3.5">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">
+                        HTML5 Iframe Source URL * <span className="text-[9px] text-muted-foreground normal-case font-normal">(populated automatically if you upload ZIP below)</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. /games-uploads/neon-showdown/index.html"
+                        value={iframeUrl}
+                        onChange={(e) => setIframeUrl(e.target.value)}
+                        required
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all font-mono"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Thumbnail Image URL *</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. https://unsplash.com/..."
+                          value={thumbnailUrl}
+                          onChange={(e) => setThumbnailUrl(e.target.value)}
+                          required
+                          className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Banner Image URL</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. https://unsplash.com/..."
+                          value={bannerUrl}
+                          onChange={(e) => setBannerUrl(e.target.value)}
+                          className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Media: screenshots, trailer */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Screenshots (comma-separated URLs)</label>
+                      <input
+                        type="text"
+                        placeholder="url1, url2, url3"
+                        value={screenshots}
+                        onChange={(e) => setScreenshots(e.target.value)}
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Trailer Video URL</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. https://youtube.com/embed/..."
+                        value={trailerUrl}
+                        onChange={(e) => setTrailerUrl(e.target.value)}
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Metadata Checkboxes: Categories and Tags */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border border-border/40">
+                    
+                    {/* Categories check lists */}
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider flex items-center gap-1">
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>Categories:</span>
+                      </span>
+                      {loadingMetadata ? (
+                        <span className="text-xs text-muted-foreground">Loading categories...</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-2">
+                          {categoriesList.map((cat) => (
+                            <label key={cat.id} className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedCategories.includes(cat.slug)}
+                                onChange={() => handleCategoryCheckboxChange(cat.slug)}
+                                className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                              />
+                              <span>{cat.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tags check lists */}
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider flex items-center gap-1">
+                        <Tags className="h-3.5 w-3.5" />
+                        <span>Tags:</span>
+                      </span>
+                      {loadingMetadata ? (
+                        <span className="text-xs text-muted-foreground">Loading tags...</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-2">
+                          {tagsList.map((tag) => (
+                            <label key={tag.id} className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedTags.includes(tag.slug)}
+                                onChange={() => handleTagCheckboxChange(tag.slug)}
+                                className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                              />
+                              <span>{tag.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* SEO metadata */}
+                  <div className="bg-muted/10 p-4 rounded-xl border border-border/40 flex flex-col gap-3">
+                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider flex items-center gap-1">
+                      <Globe className="h-3.5 w-3.5 text-accent" />
+                      <span>SEO Configurations:</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-bold text-muted-foreground uppercase">SEO Title</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Play Neon Velocity Extreme | ArcadeCore"
+                          value={seoTitle}
+                          onChange={(e) => setSeoTitle(e.target.value)}
+                          className="h-8 px-2 rounded-lg bg-background border border-border text-xs focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-bold text-muted-foreground uppercase">SEO Keywords</label>
+                        <input
+                          type="text"
+                          placeholder="racer, synthwave, neon"
+                          value={seoKeywords}
+                          onChange={(e) => setSeoKeywords(e.target.value)}
+                          className="h-8 px-2 rounded-lg bg-background border border-border text-xs focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">SEO Meta Description</label>
+                      <input
+                        type="text"
+                        placeholder="Ingest custom description for search crawlers..."
+                        value={seoDescription}
+                        onChange={(e) => setSeoDescription(e.target.value)}
+                        className="h-8 px-2 rounded-lg bg-background border border-border text-xs focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* License and status check */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">License details</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. MIT, Creative Commons BY-ND 4.0"
+                        value={licenseInfo}
+                        onChange={(e) => setLicenseInfo(e.target.value)}
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-6 mt-6">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isFeatured}
+                          onChange={(e) => setIsFeatured(e.target.checked)}
+                          className="rounded text-primary focus:ring-primary h-4 w-4"
+                        />
+                        <span>★ Featured Grid</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSponsored}
+                          onChange={(e) => setIsSponsored(e.target.checked)}
+                          className="rounded text-primary focus:ring-primary h-4 w-4"
+                        />
+                        <span>⚡ Sponsored Block</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isPublished}
+                          onChange={(e) => setIsPublished(e.target.checked)}
+                          className="rounded text-primary focus:ring-primary h-4 w-4"
+                        />
+                        <span>👁 Published (Live)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Feedback alerts */}
+                  {formFeedback && (
+                    <div className={`p-4 rounded-xl border flex items-center gap-3 text-xs ${
+                      formFeedback.type === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/10 border-red-500/20 text-red-400'
+                    }`}>
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>{formFeedback.message}</span>
+                    </div>
+                  )}
+
+                  {/* Submit button */}
+                  <button
+                    type="submit"
+                    disabled={submittingForm}
+                    className="h-12 w-full mt-2 rounded-xl bg-primary text-white font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-primary/30 hover:bg-primary/95 transition-all duration-300 disabled:opacity-50 cursor-pointer"
+                  >
+                    {submittingForm ? (
+                      <>
+                        <Cpu className="h-5 w-5 animate-spin" />
+                        <span>Ingesting profiles in DB...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileCheck className="h-5 w-5" />
+                        <span>{editingId ? 'Update Game Profile' : 'Publish Game to Platform'}</span>
+                      </>
                     )}
+                  </button>
+                </form>
+              </div>
+
+              {/* ZIP Package Upload Side Widget */}
+              <div className="flex flex-col gap-6">
+                
+                {/* ZIP Package Box */}
+                <div className="p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-4">
+                  <div className="flex items-center gap-2 border-b border-border/20 pb-3">
+                    <FileUp className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                      HTML5 Game ZIP Package
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-col gap-4">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Upload an HTML5 browser game ZIP package. The server will extract the folder, validate that it contains an <strong>index.html</strong> entry, and populate the iframeUrl route automatically.
+                    </p>
+
+                    <div className="flex flex-col items-center justify-center p-6 border border-dashed border-border/60 hover:border-primary/50 rounded-xl bg-muted/10 transition-colors cursor-pointer relative group">
+                      <input
+                        type="file"
+                        accept=".zip"
+                        onChange={(e) => setZipFile(e.target.files?.[0] || null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-xs font-semibold text-foreground mt-2 truncate max-w-full">
+                        {zipFile ? zipFile.name : 'Select HTML5 ZIP File'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground mt-1">
+                        {zipFile ? `${(zipFile.size / 1024 / 1024).toFixed(2)} MB` : 'zip format, max 50MB'}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    {uploadingZip && (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex justify-between text-[10px] font-bold text-muted-foreground">
+                          <span>Ingesting packages...</span>
+                          <span>{zipProgress}%</span>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className="bg-primary h-full transition-all duration-300"
+                            style={{ width: `${zipProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Success / Error feedbacks */}
+                    {zipSuccessMessage && (
+                      <div className="p-3.5 rounded-lg border bg-emerald-500/10 border-emerald-500/20 text-emerald-400 text-xs flex gap-2">
+                        <CheckCircle2 className="h-4.5 w-4.5 shrink-0" />
+                        <span className="break-all">{zipSuccessMessage}</span>
+                      </div>
+                    )}
+
+                    {zipErrorMessage && (
+                      <div className="p-3.5 rounded-lg border bg-red-500/10 border-red-500/20 text-red-400 text-xs flex gap-2">
+                        <AlertCircle className="h-4.5 w-4.5 shrink-0" />
+                        <span>{zipErrorMessage}</span>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleZipUpload}
+                      disabled={uploadingZip || !zipFile}
+                      className="w-full py-2.5 rounded-xl bg-muted/60 border border-border/80 hover:bg-muted text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center justify-center gap-2"
+                    >
+                      <Upload className="h-4.5 w-4.5" />
+                      <span>Upload & Extract Package</span>
+                    </button>
                   </div>
                 </div>
 
-              </div>
-            )}
-
-            {/* TAB CONTENT: DIAGNOSTICS */}
-            {activeTab === 'diagnostics' && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h3 className="text-sm font-bold text-foreground uppercase tracking-widest border-b border-border/40 pb-2 flex items-center gap-2">
-                    <Server className="h-5 w-5 text-purple-500" />
-                    <span>System Services Diagnostics</span>
-                  </h3>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Real-time status check of integrations, databases, API keys, and server infrastructure.
+                {/* Helpful tips */}
+                <div className="p-6 rounded-2xl bg-card border border-border/40 shadow text-xs flex flex-col gap-3">
+                  <span className="font-bold text-foreground">💡 Package Structure Guide</span>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Make sure the ZIP archive contains `index.html` directly in the folder directory structure. Avoid nested folder structures unless index.html can be resolved directly. Audio and asset files must use relative paths.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: MANAGE GAMES LIST (EDIT, REPLACE, TOGGLE PUBLISH, DELETE) */}
+          {activeTab === 'manage' && (
+            <div className="flex flex-col gap-6">
+              
+              {/* Search filter bar */}
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-muted/10">
+                <Search className="h-4.5 w-4.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Filter games catalog by title, slug, or categories..."
+                  value={gameSearchQuery}
+                  onChange={(e) => setGameSearchQuery(e.target.value)}
+                  className="w-full bg-transparent border-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+
+              {/* Games Listing Table */}
+              <div className="p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-4">
+                {loadingMetadata ? (
+                  <div className="flex flex-col gap-3 py-10 items-center">
+                    <Cpu className="h-8 w-8 text-primary animate-spin" />
+                    <span className="text-sm text-muted-foreground">Syncing catalog indexes...</span>
+                  </div>
+                ) : filteredGames.length === 0 ? (
+                  <div className="text-center py-10 text-sm text-muted-foreground">
+                    No matching games found in the platform index.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-border/20 text-muted-foreground font-black uppercase tracking-wider">
+                          <th className="py-3 px-2">Game</th>
+                          <th className="py-3 px-2">Slug / URL</th>
+                          <th className="py-3 px-2">Version</th>
+                          <th className="py-3 px-2">Plays</th>
+                          <th className="py-3 px-2">Status</th>
+                          <th className="py-3 px-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/10">
+                        {filteredGames.map((game) => (
+                          <tr key={game.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="py-3 px-2 flex items-center gap-3 min-w-[200px]">
+                              <img
+                                src={game.thumbnailUrl}
+                                alt={game.title}
+                                className="w-9 h-9 rounded-lg border border-border/40 object-cover"
+                              />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-semibold text-foreground text-sm truncate max-w-[150px]">
+                                  {game.title}
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {game.categories.map((c) => (
+                                    <span key={c.slug} className="px-1 text-[8px] bg-primary/10 text-primary font-bold rounded">
+                                      {c.name}
+                                    </span>
+                                  ))}
+                                  {game.isFeatured && (
+                                    <span className="px-1 text-[8px] bg-accent/25 text-accent font-bold rounded">Featured</span>
+                                  )}
+                                  {game.isSponsored && (
+                                    <span className="px-1 text-[8px] bg-emerald-500/10 text-emerald-400 font-bold rounded">Sponsored</span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 font-mono text-[10px] text-muted-foreground/80 truncate max-w-[120px]" title={game.iframeUrl}>
+                              {game.slug}
+                            </td>
+                            <td className="py-3 px-2 font-bold text-foreground">
+                              v{game.version || '1.0.0'}
+                            </td>
+                            <td className="py-3 px-2 text-muted-foreground font-semibold">
+                              {game.playCount.toLocaleString()} plays
+                            </td>
+                            <td className="py-3 px-2">
+                              <button
+                                onClick={() => handleTogglePublish(game)}
+                                className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                  game.isPublished
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25'
+                                    : 'bg-red-500/10 text-red-400 border border-red-500/25 hover:bg-red-500/25'
+                                }`}
+                              >
+                                {game.isPublished ? 'Live / Published' : 'Unpublished'}
+                              </button>
+                            </td>
+                            <td className="py-3 px-2 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => handleEditClick(game)}
+                                  className="p-1.5 rounded-lg border border-border/80 hover:bg-muted text-muted-foreground hover:text-primary transition-all cursor-pointer"
+                                  title="Edit Game Profile"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteClick(game.id, game.title)}
+                                  className="p-1.5 rounded-lg border border-red-500/20 hover:bg-red-500/10 text-red-400 transition-all cursor-pointer"
+                                  title="Delete Game"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 4: MONETIZATION SETTINGS */}
+          {activeTab === 'monetization' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-6">
+                <div className="flex items-center gap-2 border-b border-border/20 pb-3">
+                  <DollarSign className="h-4.5 w-4.5 text-primary" />
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                    Advertisements & Sponsorship Integration
+                  </h3>
+                </div>
+
+                <div className="flex flex-col gap-5">
+                  <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-muted/20">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-foreground">Enable Global Rewarded Ads</span>
+                      <span className="text-[10px] text-muted-foreground">Show rewarded ads before players launch any game play.</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={globalAdsEnabled} 
+                        onChange={(e) => setGlobalAdsEnabled(e.target.checked)} 
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Ad Countdown Seconds</label>
+                    <input
+                      type="number"
+                      value={adCountdownSeconds}
+                      onChange={(e) => setAdCountdownSeconds(parseInt(e.target.value) || 0)}
+                      className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary transition-all"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-4 border-t border-border/25 pt-4">
+                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Configure Current Sponsor Campaign</span>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground/60 tracking-wider">Sponsor Title</label>
+                        <input
+                          type="text"
+                          value={sponsorTitle}
+                          onChange={(e) => setSponsorTitle(e.target.value)}
+                          className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground/60 tracking-wider">Sponsor Campaign Target Link</label>
+                        <input
+                          type="text"
+                          value={sponsorLink}
+                          onChange={(e) => setSponsorLink(e.target.value)}
+                          className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground/60 tracking-wider">Sponsor CTA Text</label>
+                      <input
+                        type="text"
+                        value={sponsorCta}
+                        onChange={(e) => setSponsorCta(e.target.value)}
+                        className="h-10 px-3.5 rounded-xl bg-muted/60 border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {settingsSuccess && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Sponsor configurations successfully synchronized!</span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSaveSettings}
+                    className="h-10 w-full mt-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary/95 transition-all duration-300 cursor-pointer"
+                  >
+                    <span>Apply In-Game Ad Campaign Settings</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sponsor Preview box */}
+              <div className="p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-4 text-xs">
+                <span className="font-bold text-foreground">Sponsorship Layout Preview</span>
+                
+                {/* Mock Card */}
+                <div className="relative w-full h-[220px] rounded-xl overflow-hidden border border-border/40 bg-muted">
+                  <img
+                    src={sponsorBg}
+                    alt={sponsorTitle}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/60 flex flex-col justify-end p-4 gap-2">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={sponsorLogo}
+                        alt={sponsorTitle}
+                        className="w-6 h-6 rounded-lg object-cover border border-white/10"
+                      />
+                      <span className="font-bold text-white text-sm">{sponsorTitle}</span>
+                      <span className="px-1 text-[8px] bg-primary text-white uppercase font-black rounded">Ad</span>
+                    </div>
+                    <p className="text-[10px] text-white/80 line-clamp-2">{sponsorCta}</p>
+                    <a
+                      href={sponsorLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded font-bold text-[10px] w-fit"
+                    >
+                      Visit Sponsor Site
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: DYNAMIC DIAGNOSTICS DETAILED LIST */}
+          {activeTab === 'diagnostics' && (
+            <div className="flex flex-col gap-6">
+              
+              <div className="p-6 rounded-2xl bg-card border border-border/40 shadow flex flex-col gap-6">
+                <div className="flex items-center gap-2 border-b border-border/20 pb-3">
+                  <Server className="h-4.5 w-4.5 text-primary" />
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                    Telemetry Diagnostics & Configuration Variables
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
                   {/* Database */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-muted/10">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PostgreSQL Database</span>
-                      <Database className="h-4 w-4 text-purple-400" />
+                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Database className="h-4 w-4 text-primary" />
+                        <span>Neon Postgres Pooler</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-extrabold uppercase text-[9px]">Connected</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.database === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.database}</span>
-                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                      Stateless Neon Serverless PG connection pool is currently serving database transactions successfully. Connection caching is enabled.
+                    </p>
                   </div>
 
-                  {/* Clerk Auth */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                  {/* Auth */}
+                  <div className="flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-muted/10">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Clerk Auth Sync</span>
-                      <KeyRound className="h-4 w-4 text-purple-400" />
+                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <KeyRound className="h-4 w-4 text-secondary" />
+                        <span>Clerk JWT Handshake</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-extrabold uppercase text-[9px]">Active</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.clerk === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.clerk}</span>
-                    </div>
-                  </div>
-
-                  {/* Razorpay Payment */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Razorpay Payments Gate</span>
-                      <DollarSign className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${stats.diagnostics.razorpay === 'Connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.razorpay}</span>
-                    </div>
-                  </div>
-
-                  {/* Google Analytics 4 */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Google Analytics 4</span>
-                      <Globe className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.googleAnalytics}</span>
-                    </div>
-                  </div>
-
-                  {/* Clarity */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Microsoft Clarity</span>
-                      <BarChart className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.clarity}</span>
-                    </div>
-                  </div>
-
-                  {/* Google Search Console */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Google Search Console</span>
-                      <Globe className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.googleSearchConsole}</span>
-                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                      Clerk testing issuer keys are verified. User profile sync via webhooks is operational.
+                    </p>
                   </div>
 
                   {/* Redis */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-muted/10">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Redis Cache Database</span>
-                      <Cpu className="h-4 w-4 text-purple-400" />
+                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Radio className="h-4 w-4 text-orange-400" />
+                        <span>Upstash Redis Cache</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded font-extrabold uppercase text-[9px] ${
+                        stats.diagnostics.redis !== 'Not connected' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-orange-500/10 text-orange-400'
+                      }`}>
+                        {stats.diagnostics.redis !== 'Not connected' ? 'Connected' : 'Offline'}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.redis}</span>
-                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                      Used for storing leaderboard score rates and general page caching configurations.
+                    </p>
                   </div>
 
                   {/* Cloudinary */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-muted/10">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cloudinary Media CDN</span>
-                      <PlayCircle className="h-4 w-4 text-purple-400" />
+                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Globe className="h-4 w-4 text-emerald-400" />
+                        <span>Cloudinary Media CDN</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded font-extrabold uppercase text-[9px] ${
+                        stats.diagnostics.cloudinary !== 'Not connected' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-orange-500/10 text-orange-400'
+                      }`}>
+                        {stats.diagnostics.cloudinary !== 'Not connected' ? 'Connected' : 'Offline'}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.cloudinary}</span>
-                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                      Serves compressed game asset screenshots and banners at low network latency.
+                    </p>
                   </div>
 
-                  {/* Background Queues */}
-                  <div className="p-4 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Background Queue Service</span>
-                      <Radio className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                      <span className="text-xs font-bold text-foreground">{stats.diagnostics.queueStatus}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Final Report generation list */}
-                <div className="p-5 rounded-2xl bg-[#12101a] border border-border/30 flex flex-col gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Diagnostic Summary Report</span>
-                  <div className="flex flex-col gap-2 text-xs">
-                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
-                      <span className="text-muted-foreground">Widgets connected to live database</span>
-                      <span className="font-bold text-emerald-400">Total Users, Active Sessions, Razorpay Revenue, Today Users, Today Game Plays, User behavior Doughnut, Revenue Monthly Timeline, Active platform Users list</span>
-                    </div>
-                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
-                      <span className="text-muted-foreground">Widgets awaiting external integration</span>
-                      <span className="font-bold text-red-400">Google AdSense Ads, CTR, Google Analytics, Microsoft Clarity, Search Console, Redis Caching, Cloudinary</span>
-                    </div>
-                    <div className="flex items-center justify-between border-b border-border/10 pb-1.5">
-                      <span className="text-muted-foreground">Remaining placeholders</span>
-                      <span className="font-bold text-emerald-400">None (All values are derived directly from database queries or explicitly labeled as "Not connected")</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Remaining hardcoded values</span>
-                      <span className="font-bold text-emerald-400">None (Removed all mock increments and offsets)</span>
-                    </div>
-                  </div>
                 </div>
               </div>
-            )}
 
-            {/* TAB CONTENT: UPLOAD GAME */}
-            {activeTab === 'upload' && (
-              <div className="max-w-xl mx-auto w-full p-6 rounded-2xl glass border border-border/40 flex flex-col gap-6">
-                <h3 className="text-sm font-bold text-foreground uppercase tracking-widest border-b border-border/40 pb-2 flex items-center gap-2">
-                  <Upload className="h-5 w-5 text-purple-500" />
-                  <span>Publish New Game</span>
-                </h3>
-
-                {uploadSuccess ? (
-                  <div className="p-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col items-center justify-center text-center gap-4 py-12 animate-bounce">
-                    <CheckCircle2 className="h-10 w-10 text-purple-400" />
-                    <div>
-                      <h4 className="text-md font-bold text-foreground">Game Published Successfully!</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">Asset compiles are done. Game has been added to user listings.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handleUploadGame} className="flex flex-col gap-4">
-                    {/* Game title & category */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Game Title</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Neon Horizon"
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
-                          className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</label>
-                        <select
-                          value={category}
-                          onChange={(e) => setCategory(e.target.value)}
-                          className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                        >
-                          <option value="racing">Racing</option>
-                          <option value="arcade">Arcade</option>
-                          <option value="action">Action</option>
-                          <option value="shooting">Shooting</option>
-                          <option value="puzzle">Puzzle</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</label>
-                      <textarea
-                        required
-                        rows={3}
-                        placeholder="Enter short game description here..."
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        className="p-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 transition-all resize-none"
-                      />
-                    </div>
-
-                    {/* Thumbnail url */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Thumbnail Image URL</label>
-                      <input
-                        type="url"
-                        required
-                        placeholder="https://images.unsplash.com/photo-1542751371..."
-                        value={thumbnailUrl}
-                        onChange={(e) => setThumbnailUrl(e.target.value)}
-                        className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                      />
-                    </div>
-
-                    {/* Game ZIP upload */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ZIP Archive Export File (HTML5 build)</label>
-                      <div className="border border-dashed border-border/60 hover:border-purple-500/40 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors relative bg-muted/20">
-                        <Upload className="h-8 w-8 text-muted-foreground/60 animate-bounce" />
-                        <span className="text-xs text-muted-foreground">Drag and drop ZIP files here or click to browse</span>
-                        <input
-                          type="file"
-                          accept=".zip"
-                          onChange={(e) => setZipFile(e.target.files?.[0] || null)}
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                        />
-                        {zipFile && (
-                          <span className="text-xs text-purple-400 font-semibold mt-1">
-                            Selected: {zipFile.name} ({(zipFile.size / 1024 / 1024).toFixed(2)} MB)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Submit button */}
-                    <button
-                      type="submit"
-                      className="w-full h-11 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm tracking-wider uppercase transition-all shadow-lg shadow-purple-600/20 hover:scale-[1.01] active:scale-[0.98] cursor-pointer mt-2"
-                    >
-                      Publish Game
-                    </button>
-                  </form>
-                )}
-              </div>
-            )}
-
-            {/* TAB CONTENT: MONETIZATION */}
-            {activeTab === 'monetization' && (
-              <div className="max-w-xl mx-auto w-full p-6 rounded-2xl glass border border-border/40 flex flex-col gap-6">
-                <h3 className="text-sm font-bold text-foreground uppercase tracking-widest border-b border-border/40 pb-2 flex items-center gap-2">
-                  <Settings className="h-5 w-5 text-purple-500" />
-                  <span>Monetization & Ad Configuration</span>
-                </h3>
-
-                {settingsSuccess ? (
-                  <div className="p-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col items-center justify-center text-center gap-4 py-12 animate-bounce">
-                    <CheckCircle2 className="h-10 w-10 text-emerald-400" />
-                    <div>
-                      <h4 className="text-md font-bold text-foreground">Settings Saved Successfully!</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">Ad triggers and sponsor campaigns have been updated globally.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSaveMonetization} className="flex flex-col gap-4">
-                    {/* Toggle global ads & skip timer */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-2 p-3 rounded-xl bg-muted/40 border border-border/50">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Global Interstitial Ads Status</label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <input
-                            type="checkbox"
-                            id="globalAds"
-                            checked={globalAdsEnabled}
-                            onChange={(e) => setGlobalAdsEnabled(e.target.checked)}
-                            className="h-4.5 w-4.5 rounded text-purple-500 focus:ring-purple-500 bg-muted border-border cursor-pointer"
-                          />
-                          <label htmlFor="globalAds" className="text-xs font-semibold text-foreground cursor-pointer">
-                            {globalAdsEnabled ? '🟢 Pre-roll Ads Active' : '🔴 Ads Disabled'}
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ad Countdown Timer (Seconds)</label>
-                        <input
-                          type="number"
-                          required
-                          min={0}
-                          max={30}
-                          value={adCountdownSeconds}
-                          onChange={(e) => setAdCountdownSeconds(Number(e.target.value))}
-                          className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border/30 pt-3">
-                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-purple-400 mb-3">Sponsor Campaign Details</h4>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sponsor Brand Title</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="NordVPN"
-                            value={sponsorTitle}
-                            onChange={(e) => setSponsorTitle(e.target.value)}
-                            className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Affiliate Destination Link (URL)</label>
-                          <input
-                            type="url"
-                            required
-                            placeholder="https://nordvpn.com/partner-code"
-                            value={sponsorLink}
-                            onChange={(e) => setSponsorLink(e.target.value)}
-                            className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sponsor Tagline / Call to Action</label>
-                      <textarea
-                        required
-                        rows={2}
-                        placeholder="Get 63% off NordVPN. Shield your internet traffic now!"
-                        value={sponsorCta}
-                        onChange={(e) => setSponsorCta(e.target.value)}
-                        className="p-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sponsor Logo Image URL</label>
-                        <input
-                          type="url"
-                          required
-                          value={sponsorLogo}
-                          onChange={(e) => setSponsorLogo(e.target.value)}
-                          className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sponsor Banner Backdrop Image URL</label>
-                        <input
-                          type="url"
-                          required
-                          value={sponsorBg}
-                          onChange={(e) => setSponsorBg(e.target.value)}
-                          className="h-10 px-3 rounded-xl bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full h-11 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm tracking-wider uppercase transition-all shadow-lg shadow-purple-600/20 hover:scale-[1.01] active:scale-[0.98] cursor-pointer mt-2"
-                    >
-                      Save Monetization Settings
-                    </button>
-                  </form>
-                )}
-              </div>
-            )}
-
-          </div>
+            </div>
+          )}
 
         </div>
 

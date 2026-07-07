@@ -54,6 +54,13 @@ model Game {
   leaderboard    Leaderboard[]
   gameViews      GameView[]
   screenshots    String[]      // Array of screenshot URLs
+  isPublished    Boolean       @default(true)
+  version        String        @default("1.0.0")
+  licenseInfo    String?
+  seoTitle       String?
+  seoKeywords    String?
+  seoDescription String?
+  trailerUrl     String?
 }
 
 model Category {
