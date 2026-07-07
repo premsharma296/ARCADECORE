@@ -15,17 +15,22 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [coins, setCoins] = useState(100)
+  const [equippedBorder, setEquippedBorder] = useState('none')
 
   useEffect(() => {
     const checkCoins = () => {
       try {
-        const val = localStorage.getItem('arcadecore_coins')
-        if (val) {
-          setCoins(parseInt(val, 10))
-        } else {
-          localStorage.setItem('arcadecore_coins', '100')
-          setCoins(100)
-        }
+        fetch('/api/user/profile')
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && typeof data.coins === 'number') {
+              setCoins(data.coins)
+              setEquippedBorder(data.equippedBorder || 'none')
+              localStorage.setItem('arcadecore_coins', data.coins.toString())
+              localStorage.setItem('arcadecore_equipped_border', data.equippedBorder || 'none')
+            }
+          })
+          .catch(() => {})
       } catch {}
     }
     
@@ -34,12 +39,14 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
     // Listen for storage changes across tabs & local custom triggers
     window.addEventListener('storage', checkCoins)
     window.addEventListener('arcadecore_coins_updated', checkCoins)
+    window.addEventListener('arcadecore_border_equipped', checkCoins)
     
     return () => {
       window.removeEventListener('storage', checkCoins)
       window.removeEventListener('arcadecore_coins_updated', checkCoins)
+      window.removeEventListener('arcadecore_border_equipped', checkCoins)
     }
-  }, [])
+  }, [isSignedIn])
 
   // Fetch search suggestions
   useEffect(() => {
@@ -203,15 +210,24 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
 
           {/* Authentication Clerk Buttons */}
           <div className="flex items-center gap-2 border-l border-border/50 pl-3">
-            {isSignedIn ? (
-              <UserButton
-                appearance={{
-                  elements: {
-                    avatarBox: "h-9 w-9 rounded-xl border border-primary/40 p-[1px] hover:scale-105 transition-transform",
-                  },
-                }}
-              />
-            ) : (
+            {isSignedIn ? (() => {
+              const borderStyles: { [key: string]: string } = {
+                'none': 'border border-primary/40 p-[1px]',
+                'cyber-green': 'border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)] p-[1.5px]',
+                'outrun-pink': 'border-2 border-pink-500 animate-pulse shadow-[0_0_10px_rgba(236,72,153,0.6)] p-[1.5px]',
+                'gold-crown': 'border-3 border-yellow-500 animate-bounce shadow-[0_0_12px_rgba(234,179,8,0.8)] p-[2px]',
+                'rainbow-shift': 'border-3 border-transparent bg-clip-border bg-gradient-to-r from-red-500 via-green-500 via-blue-500 to-yellow-500 shadow-[0_0_15px_rgba(168,85,247,0.8)] p-[2px]'
+              };
+              return (
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: `h-9 w-9 rounded-xl hover:scale-105 transition-transform ${borderStyles[equippedBorder] || borderStyles['none']}`,
+                    },
+                  }}
+                />
+              );
+            })() : (
               <SignInButton mode="modal">
                 <button className="h-9 px-4 rounded-xl text-sm font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer">
                   Login

@@ -13,16 +13,26 @@ export async function POST(req: NextRequest) {
     const { xp } = await req.json()
 
     try {
-      // Try to increment database user XP count
       const user = await db.user.update({
         where: { id: userId },
         data: {
           xp: { increment: xp }
         }
       })
-      return NextResponse.json({ success: true, xp: user.xp })
+
+      // Calculate and sync level dynamically (e.g. 1000 XP per level)
+      const nextLevel = Math.floor(user.xp / 1000) + 1
+      let finalLevel = user.level
+      if (nextLevel !== user.level) {
+        const updated = await db.user.update({
+          where: { id: userId },
+          data: { level: nextLevel }
+        })
+        finalLevel = updated.level
+      }
+
+      return NextResponse.json({ success: true, xp: user.xp, level: finalLevel })
     } catch {
-      // Mock Success Response if database is offline or not configured
       return NextResponse.json({ success: true, message: 'Mock XP added' })
     }
   } catch (error: any) {

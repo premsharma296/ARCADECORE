@@ -19,39 +19,49 @@ interface Mission {
 
 export default function MissionsPage() {
   const [mounted, setMounted] = useState(false)
-  const [streakDays, setStreakDays] = useState(3) // mock starting streak
-  
-  const [missions, setMissions] = useState<Mission[]>([
-    { id: '1', title: 'Speed Demon Refueling', desc: 'Collect 3 glowing energy batteries in Neon Velocity.', rewardXp: 150, target: 3, current: 1, claimed: false, category: 'Racing' },
-    { id: '2', title: 'Daily Spinner Choice', desc: 'Spin the Daily Rewards Wheel today to claim your prize.', rewardXp: 100, target: 1, current: 1, claimed: false, category: 'Daily' },
-    { id: '3', title: 'Community Reviewer', desc: 'Write a comment/review on any of our browser arcade games.', rewardXp: 50, target: 1, current: 0, claimed: false, category: 'Social' },
-    { id: '4', title: 'Blocks Row Clearer', desc: 'Clear 10 complete horizontal rows in Cosmic Tetris.', rewardXp: 200, target: 10, current: 4, claimed: false, category: 'Puzzle' },
-  ])
+  const [streakDays, setStreakDays] = useState(3)
+  const [missions, setMissions] = useState<Mission[]>([])
 
   useEffect(() => {
-    setMounted(true)
+    fetch('/api/user/quests')
+      .then((res) => res.json())
+      .then((data) => {
+        setMissions(data)
+        setMounted(true)
+      })
+      .catch(() => {
+        setMounted(true)
+      })
   }, [])
 
   const claimXp = (id: string, rewardXp: number) => {
     sound.playClick()
-    setMissions(prev =>
-      prev.map(m => (m.id === id ? { ...m, claimed: true } : m))
-    )
-
-    // Play win synthesizers
-    sound.playWin()
-    confetti({
-      particleCount: 100,
-      spread: 60,
-      colors: ['#d946ef', '#06b6d4']
-    })
-
-    // Execute server-side add-xp dispatch
-    fetch('/api/user/add-xp', {
+    
+    fetch('/api/user/quests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ xp: rewardXp })
-    }).catch(() => {})
+      body: JSON.stringify({ questId: id })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setMissions((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, claimed: true } : m))
+          )
+          sound.playWin()
+          confetti({
+            particleCount: 100,
+            spread: 60,
+            colors: ['#d946ef', '#06b6d4']
+          })
+          window.dispatchEvent(new Event('arcadecore_coins_updated'))
+        } else {
+          alert(data.error || 'Failed to claim reward')
+        }
+      })
+      .catch(() => {
+        alert('Network error claiming reward')
+      })
   }
 
   if (!mounted) {

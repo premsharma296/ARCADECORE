@@ -61,28 +61,33 @@ export default function ShopPage() {
   const [isProcessingStripe, setIsProcessingStripe] = useState(false)
   const [stripeSuccessMessage, setStripeSuccessMessage] = useState<string | null>(null)
 
-  // Sync state with storage
+  // Fetch real-time coins, unlocked items, and equipped styles from database on mount
   useEffect(() => {
-    try {
-      const val = localStorage.getItem('arcadecore_coins')
-      if (val) setCoins(parseInt(val, 10))
-      
-      const unlocked = localStorage.getItem('arcadecore_unlocked_borders')
-      if (unlocked) {
-        setUnlockedBorders(JSON.parse(unlocked))
-      } else {
-        localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(['none']))
-      }
+    if (!isSignedIn) return
 
-      const equipped = localStorage.getItem('arcadecore_equipped_border')
-      if (equipped) setEquippedBorder(equipped)
-    } catch {}
-  }, [])
+    fetch('/api/user/profile')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.error) {
+          setCoins(data.coins)
+          const unlockedList = data.unlockedBorders.split(',')
+          setUnlockedBorders(unlockedList)
+          setEquippedBorder(data.equippedBorder)
+          
+          // Write local storage as a cache fallback to notify header/shells immediately
+          localStorage.setItem('arcadecore_coins', data.coins.toString())
+          localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(unlockedList))
+          localStorage.setItem('arcadecore_equipped_border', data.equippedBorder)
+          window.dispatchEvent(new Event('arcadecore_coins_updated'))
+          window.dispatchEvent(new Event('arcadecore_border_equipped'))
+        }
+      })
+      .catch(() => {})
+  }, [isSignedIn])
 
   const triggerCoinsUpdate = (newCoins: number) => {
     localStorage.setItem('arcadecore_coins', newCoins.toString())
     setCoins(newCoins)
-    // Dispatch local custom storage event so the Header updates immediately
     window.dispatchEvent(new Event('arcadecore_coins_updated'))
   }
 
@@ -197,34 +202,71 @@ export default function ShopPage() {
   }
 
   // Purchase cosmetic border
-  const handleBuyBorder = (id: string, cost: number) => {
+  const handleBuyBorder = async (id: string, cost: number) => {
     if (coins < cost) {
       alert('Insufficient Coins! Play more games or buy coins from the Stripe catalog.')
       return
     }
 
-    const nextCoins = coins - cost
-    const nextUnlocked = [...unlockedBorders, id]
-    
-    triggerCoinsUpdate(nextCoins)
-    setUnlockedBorders(nextUnlocked)
-    localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(nextUnlocked))
-    
-    sound.playWin()
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.6 }
-    })
+    setIsProcessingStripe(true)
+
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'buy', borderId: id, cost })
+      })
+
+      const data = await res.json()
+      setIsProcessingStripe(false)
+
+      if (res.ok && data.success) {
+        triggerCoinsUpdate(data.coins)
+        const unlockedList = data.unlockedBorders.split(',')
+        setUnlockedBorders(unlockedList)
+        localStorage.setItem('arcadecore_unlocked_borders', JSON.stringify(unlockedList))
+
+        sound.playWin()
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.6 }
+        })
+      } else {
+        alert(data.error || 'Failed to purchase cosmetic border.')
+      }
+    } catch {
+      setIsProcessingStripe(false)
+      alert('Error connecting to database to complete purchase.')
+    }
   }
 
   // Equip border cosmetic
-  const handleEquipBorder = (id: string) => {
-    setEquippedBorder(id)
-    localStorage.setItem('arcadecore_equipped_border', id)
-    // Dispatch a custom event in case layouts need to sync equipped borders in real-time
-    window.dispatchEvent(new Event('arcadecore_border_equipped'))
-    sound.playClick()
+  const handleEquipBorder = async (id: string) => {
+    setIsProcessingStripe(true)
+
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'equip', borderId: id })
+      })
+
+      const data = await res.json()
+      setIsProcessingStripe(false)
+
+      if (res.ok && data.success) {
+        setEquippedBorder(id)
+        localStorage.setItem('arcadecore_equipped_border', id)
+        window.dispatchEvent(new Event('arcadecore_border_equipped'))
+        sound.playClick()
+      } else {
+        alert(data.error || 'Failed to equip border.')
+      }
+    } catch {
+      setIsProcessingStripe(false)
+      alert('Error connecting to database to equip border.')
+    }
   }
 
   return (
@@ -249,16 +291,16 @@ export default function ShopPage() {
           </div>
         </div>
 
-        {/* Stripe Processing Modal Overlay */}
+        {/* Razorpay Processing Modal Overlay */}
         {isProcessingStripe && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <div className="max-w-md w-full p-6 rounded-2xl glass border border-border flex flex-col items-center justify-center text-center gap-4 animate-pulse">
               <div className="h-10 w-10 rounded-full border-3 border-primary border-t-transparent animate-spin" />
               <h3 className="text-sm font-bold text-foreground uppercase tracking-widest">
-                Stripe secure gateway checkout
+                Razorpay secure gateway checkout
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                We are processing your simulated credit card checkout. Please do not close this window.
+                Processing your secure payment transaction. Please do not close this window.
               </p>
             </div>
           </div>
@@ -352,7 +394,7 @@ export default function ShopPage() {
             <div className="mt-2 p-3.5 rounded-xl border border-border/30 bg-muted/10 text-muted-foreground flex gap-2">
               <AlertCircle className="h-4.5 w-4.5 text-muted-foreground/70 shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
-                Stripe sandbox environment is active. Standard transactions are simulated instantly; no actual money is charged.
+                Razorpay payment processing is active. Support UPI and Card gateways. Real-time coins will be credited upon successful completion.
               </p>
             </div>
           </div>

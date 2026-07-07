@@ -13,6 +13,9 @@ model User {
   username         String            @unique
   avatarUrl        String?
   xp               Int               @default(0)
+  coins            Int               @default(100)  // Spendable Coin Shop balance
+  unlockedBorders  String            @default("none") // Comma-separated unlocked cosmetic IDs, e.g. "none,outrun-pink"
+  equippedBorder   String            @default("none") // Currently active profile border ID
   level            Int               @default(1)
   isPremium        Boolean           @default(false)
   createdAt        DateTime          @default(now())

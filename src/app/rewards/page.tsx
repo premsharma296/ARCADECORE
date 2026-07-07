@@ -21,6 +21,7 @@ export default function RewardsPage() {
   const [spinning, setSpinning] = useState(false)
   const [reward, setReward] = useState<any | null>(null)
   const [dailyClaimed, setDailyClaimed] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState(0)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const spinAngleRef = useRef(0)
@@ -40,6 +41,43 @@ export default function RewardsPage() {
       sound.stopBackgroundMusic()
     }
   }, [])
+
+  // Check daily reward status from database on mount
+  useEffect(() => {
+    fetch('/api/user/claim-reward')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.claimed) {
+          setDailyClaimed(true)
+          setTimeRemaining(data.timeRemaining || 0)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Timer countdown updates
+  useEffect(() => {
+    if (!dailyClaimed || timeRemaining <= 0) return
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1000) {
+          setDailyClaimed(false)
+          clearInterval(interval)
+          return 0
+        }
+        return prev - 1000
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [dailyClaimed, timeRemaining])
+
+  const getFormattedTime = (ms: number) => {
+    if (ms <= 0) return '00:00:00'
+    const seconds = Math.floor((ms / 1000) % 60)
+    const minutes = Math.floor((ms / (1000 * 60)) % 60)
+    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24)
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  }
 
   // Draw the spin wheel procedurally on the Canvas
   useEffect(() => {
@@ -157,7 +195,6 @@ export default function RewardsPage() {
         requestAnimationFrame(animate)
       } else {
         setSpinning(false)
-        setDailyClaimed(true)
         const won = SECTORS[winningIndex]
         setReward(won)
 
@@ -174,16 +211,25 @@ export default function RewardsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rewardType: won.label, amount: won.value })
-        }).catch(() => {})
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              setDailyClaimed(true)
+              
+              const now = new Date()
+              const startOfToday = new Date(now)
+              startOfToday.setUTCHours(0, 0, 0, 0)
+              const nextMidnight = new Date(startOfToday)
+              nextMidnight.setUTCDate(nextMidnight.getUTCDate() + 1)
+              setTimeRemaining(nextMidnight.getTime() - now.getTime())
 
-        // Mock increment XP in local/backend storage telemetry
-        if (won.type === 'xp') {
-          fetch('/api/user/add-xp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ xp: won.value })
-          }).catch(() => {})
-        }
+              // Sync the coins state to header
+              localStorage.setItem('arcadecore_coins', data.coins.toString())
+              window.dispatchEvent(new Event('arcadecore_coins_updated'))
+            }
+          })
+          .catch(() => {})
       }
     }
 
@@ -220,7 +266,7 @@ export default function RewardsPage() {
                 : 'bg-primary text-white shadow-primary/25 border border-primary/25 hover:bg-primary/95 animate-pulse'
             }`}
           >
-            {spinning ? 'Spinning Wheel...' : dailyClaimed ? 'Claimed Today' : 'Spin Wheel'}
+            {spinning ? 'Spinning Wheel...' : dailyClaimed ? `Next Spin: ${getFormattedTime(timeRemaining)}` : 'Spin Wheel'}
           </button>
         </div>
 

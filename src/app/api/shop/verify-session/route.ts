@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
       const user = await db.user.update({
         where: { id: userId },
         data: {
-          xp: { increment: parseInt(coins || '0', 10) }
+          coins: { increment: parseInt(coins || '0', 10) }
         }
       })
-      updatedXp = user.xp
+      updatedXp = user.coins
     } catch (e: any) {
       console.error('Database write failed during Razorpay payment verification:', e)
       return NextResponse.json({ error: 'Failed to write transaction' }, { status: 500 })
