@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import AuthSync from "@/components/auth-sync";
 import { Analytics } from "@vercel/analytics/react";
+import AnalyticsPing from "@/components/analytics-ping";
 import "./globals.css";
 
 const orbitron = Orbitron({
@@ -44,6 +45,7 @@ export default function RootLayout({
           <ThemeProvider>
             <AuthSync />
             <Analytics />
+            <AnalyticsPing />
             {children}
           </ThemeProvider>
         </body>
