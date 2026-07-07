@@ -18,11 +18,6 @@ interface CarouselGame {
 
 export default function HeroCarousel({ games }: { games: CarouselGame[] }) {
   const [activeIndex, setActiveIndex] = useState(0)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Autoplay slides
   useEffect(() => {
@@ -34,9 +29,6 @@ export default function HeroCarousel({ games }: { games: CarouselGame[] }) {
   }, [games])
 
   if (!games || games.length === 0) return null
-  if (!mounted) {
-    return <div className="relative w-full h-[360px] md:h-[420px] rounded-3xl bg-muted/40 animate-pulse border border-border/40" />
-  }
 
   const activeGame = games[activeIndex]
 
