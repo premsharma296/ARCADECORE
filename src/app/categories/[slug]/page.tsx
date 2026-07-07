@@ -10,7 +10,20 @@ import { Gamepad2 } from 'lucide-react'
 export async function generateMetadata({ params }: { params: Promise<{ slug?: string }> }) {
   const { slug } = await params
   if (!slug) return { title: 'Games - ArcadeCore' }
-  const title = slug.charAt(0).toUpperCase() + slug.slice(1)
+
+  try {
+    const cat = await db.category.findUnique({
+      where: { slug }
+    })
+    if (cat) {
+      return {
+        title: `${cat.name} Games - Play Online on ArcadeCore`,
+        description: `Play the best free online ${cat.name} games on ArcadeCore. No downloads or installations required!`,
+      }
+    }
+  } catch {}
+
+  const title = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
   return {
     title: `${title} Games - Play Online on ArcadeCore`,
     description: `Play the best free online ${title} games on ArcadeCore. No downloads or installations required!`,

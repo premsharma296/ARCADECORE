@@ -8,9 +8,9 @@ export default function robots(): MetadataRoute.Robots {
       disallow: ['/admin/', '/api/admin/'],
     },
     sitemap: [
-      'https://arcadecore.com/sitemap.xml',
-      'https://arcadecore.com/sitemap-images.xml',
-      'https://arcadecore.com/sitemap-videos.xml'
+      'https://arcadecore.in/sitemap.xml',
+      'https://arcadecore.in/sitemap-images.xml',
+      'https://arcadecore.in/sitemap-videos.xml'
     ],
   }
 }

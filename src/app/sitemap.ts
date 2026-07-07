@@ -1,8 +1,9 @@
 import { MetadataRoute } from 'next'
+import db from '@/lib/db'
 import { getFullMockCatalog } from '@/lib/fallback-data'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://arcadecore.com'
+  const baseUrl = 'https://arcadecore.in'
   
   // Define categories array
   const categories = [
@@ -18,10 +19,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }))
 
-  // Fetch dynamic game pages
-  const catalog = getFullMockCatalog()
-  const gameUrls = catalog.map(game => ({
-    url: `${baseUrl}/games/${game.slug}`,
+  // Fetch dynamic game pages from PostgreSQL database
+  let gameSlugs: string[] = []
+  try {
+    const dbGames = await db.game.findMany({
+      select: { slug: true }
+    })
+    gameSlugs = dbGames.map(g => g.slug)
+  } catch {}
+
+  // Fallback to local mock data catalog if database is empty
+  if (gameSlugs.length === 0) {
+    gameSlugs = getFullMockCatalog().map(g => g.slug)
+  }
+
+  const gameUrls = gameSlugs.map(slug => ({
+    url: `${baseUrl}/games/${slug}`,
     lastModified: new Date(),
     changeFrequency: 'daily' as const,
     priority: 0.8,
@@ -72,6 +85,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: 'weekly' as const,
       priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/shop`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly' as const,
+      priority: 0.7,
     },
     ...catUrls,
     ...gameUrls,

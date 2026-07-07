@@ -10,6 +10,24 @@ import { getFullMockCatalog } from '@/lib/fallback-data'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = params ? await params : { slug: '' }
+  
+  try {
+    const game = await db.game.findUnique({
+      where: { slug }
+    })
+    if (game) {
+      return {
+        title: `${game.title} - Play Free Online on ArcadeCore`,
+        description: game.description,
+        openGraph: {
+          title: `${game.title} - ArcadeCore`,
+          description: game.description,
+          images: [{ url: game.thumbnailUrl }]
+        }
+      }
+    }
+  } catch {}
+
   const catalog = getFullMockCatalog()
   const game = catalog.find((g) => g.slug === slug)
   

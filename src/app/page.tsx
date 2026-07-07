@@ -9,6 +9,11 @@ import LiveSidebar from '@/components/realtime/live-sidebar'
 import { getFullMockCatalog } from '@/lib/fallback-data'
 import { Flame, Star, Sparkles } from 'lucide-react'
 
+export const metadata = {
+  title: 'ArcadeCore - Play Free Online HTML5 Browser Games',
+  description: 'Play 100+ free online HTML5 browser games on ArcadeCore. Experience action, racing, and puzzle games instantly. Spin daily rewards and compete on global leaderboards!',
+}
+
 export const revalidate = 60 // Cache home page for 1 minute
 
 async function getGamesData() {
