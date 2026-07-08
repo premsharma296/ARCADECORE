@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Neon Race 3D - Synthwave High-Speed WebGL Racer | ArcadeCore</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Three.js WebGL Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <!-- Game Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- CRT Screen Shader Scanlines -->
+  <div class="crt-overlay"></div>
+
+  <!-- UI LAYERS -->
+  <div class="ui-layer">
+    
+    <!-- Top HUD Row -->
+    <div class="top-hud">
+      <div class="hud-panel">
+        <div class="stat-label">Score</div>
+        <div id="scoreVal" class="stat-value">000000</div>
+      </div>
+      
+      <div class="hud-panel" style="text-align: right;">
+        <div class="stat-label">Energy</div>
+        <div id="energyPercent" class="stat-value" style="color: #ff00d4; text-shadow: 0 0 10px rgba(255, 0, 212, 0.6);">100%</div>
+        <div class="energy-meter-container">
+          <div id="energyBar" class="energy-meter-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom HUD controls -->
+    <div class="bottom-hud">
+      
+      <!-- Mobile steering controls -->
+      <div class="mobile-controls interactive">
+        <button id="leftBtn" class="control-btn" aria-label="Steer Left">&larr;</button>
+        <button id="boostBtn" class="control-btn" style="width: 100px; font-size: 0.95rem; border-color: rgba(255,0,212,0.3);" aria-label="Boost">BOOST</button>
+        <button id="rightBtn" class="control-btn" aria-label="Steer Right">&rarr;</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- LOBBY/START MENU -->
+  <div id="lobbyScreen" class="screen-overlay">
+    <div class="menu-card interactive">
+      <h1 class="menu-title">Neon Race 3D</h1>
+      <p class="menu-description">
+        Dodge slow obstacle blocks, collect bright yellow batteries to recharge your battery grid, and use speed boosts to hit warp speeds! How long can you survive on the neon cyber-highway?
+      </p>
+      
+      <div style="display: flex; justify-content: center; gap: 20px; align-items: center;">
+        <button id="startBtn" class="menu-btn" style="flex: 1;">Start Race</button>
+        <button id="muteBtn" class="volume-btn" aria-label="Mute Audio">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="volumeIcon">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+        </button>
+      </div>
+
+      <p style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 10px;">
+        Steer: A / D or Left / Right Arrows &bull; Boost: Spacebar
+      </p>
+    </div>
+  </div>
+
+  <!-- GAME OVER MENU -->
+  <div id="gameOverScreen" class="screen-overlay" style="display: none; opacity: 0;">
+    <div class="menu-card gameover-card interactive">
+      <h1 class="menu-title gameover-title">GRID CRASH</h1>
+      <p class="menu-description">Your battery depleted or you suffered a terminal structural impact on the synthwave highway grid!</p>
+      
+      <div class="gameover-stats-grid">
+        <div class="stat-box">
+          <div class="stat-box-title">Final Score</div>
+          <div id="goScore" class="stat-box-val highlight">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-title">High Score</div>
+          <div id="goBest" class="stat-box-val">0</div>
+        </div>
+      </div>
+
+      <button id="restartBtn" class="menu-btn gameover-btn">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Core Game Script -->
+  <script src="game.js"></script>
+</body>
+</html>
