@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEON ARCHITECT | Persistent Cyberpunk Strategy MMO</title>
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="index.css">
+
+  <!-- Lucide Icons for UI -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Import Maps for Three.js ES6 Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- WebGL Rendering Canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Cyberpunk Background Dust Overlay -->
+  <div id="noise-overlay"></div>
+
+  <!-- INITIAL AUTH OVERLAY -->
+  <div id="auth-screen" class="modal-overlay active">
+    <div class="auth-flex-container">
+      
+      <!-- REGISTRATION CARD -->
+      <div class="neon-card glass">
+        <div class="card-header">
+          <h1 class="glitch-text" data-text="NEON ARCHITECT">NEON ARCHITECT</h1>
+          <p class="subtitle">GLOBAL STRATEGY PROTOCOL v1.0.8</p>
+        </div>
+        <div class="card-body">
+          <div class="input-group">
+            <label for="username-input">ARCHITECT IDENTITY</label>
+            <input type="text" id="username-input" placeholder="ENTER CODENAME..." maxlength="15" autocomplete="off">
+          </div>
+          
+          <div class="input-group">
+            <label>NEON SIGNATURE COLOR</label>
+            <div class="color-picker-grid">
+              <button class="color-btn active" style="--btn-color: #00ffcc" data-color="#00ffcc"></button>
+              <button class="color-btn" style="--btn-color: #ff0055" data-color="#ff0055"></button>
+              <button class="color-btn" style="--btn-color: #0088ff" data-color="#0088ff"></button>
+              <button class="color-btn" style="--btn-color: #ffcc00" data-color="#ffcc00"></button>
+              <button class="color-btn" style="--btn-color: #ff00ff" data-color="#ff00ff"></button>
+              <button class="color-btn" style="--btn-color: #9900ff" data-color="#9900ff"></button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="region-select">SECTOR REGION</label>
+            <select id="region-select">
+              <option value="North America">NORTH AMERICA (NA-EAST)</option>
+              <option value="Europe">EUROPE (EU-CENTRAL)</option>
+              <option value="Asia">ASIA (AS-PACIFIC)</option>
+              <option value="India">INDIA (IN-WEST)</option>
+              <option value="South America">SOUTH AMERICA (SA-EAST)</option>
+              <option value="Oceania">OCEANIA (OC-SOUTH)</option>
+            </select>
+          </div>
+
+          <button id="join-btn" class="neon-btn cyan-glow">INITIALIZE ARCHITECT</button>
+        </div>
+      </div>
+
+      <!-- OPERATIONS MANUAL CARD -->
+      <div class="neon-card glass instruction-card">
+        <div class="card-header">
+          <h2 class="cyan-text">SYSTEM OPERATIONS MANUAL</h2>
+          <p class="subtitle">NEON ARCHITECTURAL PROTOCOLS</p>
+        </div>
+        <div class="card-body scrollable-instructions">
+          <div class="manual-section">
+            <h4>1. HOW TO BUILD (VECTOR DRAWING)</h4>
+            <p>Select an <strong>Intent Category</strong> on the left menu (Logistics, Utilities, Industry, or Combat). Then, <strong>click and drag</strong> your cursor on the 3D grid to trace energy walls.</p>
+          </div>
+          <div class="manual-section mt-4">
+            <h4>2. AI SHAPE INTERPRETATION RULES</h4>
+            <ul>
+              <li><strong>Open Lines (Straight/Curved):</strong> Translates to lines of transportation (Roads, Power Lines, or Laser Defense Barriers).</li>
+              <li><strong>Closed Loops (Boxes/Circles):</strong> Tracing back to the start coordinate triggers production hubs: <strong>Generators</strong> (under utilities), <strong>Factories / Markets</strong> (under industry), or <strong>Shield Domes</strong> (under combat).</li>
+            </ul>
+          </div>
+          <div class="manual-section mt-4">
+            <h4>3. ECO LOGISTICS & COMBAT</h4>
+            <p>Drones physically transport resources (Energy/Crystals) along roads. Protect your lines! Opponent structures can be **hacked** in real-time, and lightning/solar storms can short-circuit unprotected grids.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- HUD IN-GAME OVERLAY -->
+  <div id="hud" class="hud-container hidden">
+    
+    <!-- HEADER BAR -->
+    <header class="hud-header glass">
+      <div class="header-left">
+        <div class="logo-text">NEON ARCHITECT</div>
+        <div class="hud-stat tick-counter">CYCLE: <span id="tick-val">0</span></div>
+      </div>
+      <div class="header-center">
+        <div id="weather-alert" class="weather-pill clear-weather">
+          <i data-lucide="sun"></i> <span id="weather-val">CLEAR SKIES</span>
+        </div>
+        <div id="event-alert" class="event-pill hidden animate-pulse">
+          <i data-lucide="zap"></i> <span id="event-val">NO WORLD EVENTS</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="admin-toggle-btn" class="hud-btn red-glow text-red hidden">
+          <i data-lucide="sliders"></i> ADMIN CONSOLE
+        </button>
+        <button id="mute-btn" class="hud-btn flex items-center justify-center">
+          <i data-lucide="volume-2" id="mute-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- LEFT SIDEBAR: RESOURCES & DRAW TOOLS -->
+    <section class="hud-sidebar-left glass">
+      <div class="profile-card">
+        <div class="avatar-glow" id="avatar-color-dot"></div>
+        <div>
+          <div class="architect-name" id="hud-username">ARCHITECT</div>
+          <div class="architect-level">LVL <span id="hud-level">1</span></div>
+        </div>
+      </div>
+
+      <div class="separator"></div>
+
+      <!-- Resource Grid -->
+      <div class="resources-grid">
+        <div class="resource-item" title="Credits (Used for building and upgrading)">
+          <div class="res-icon credits-color"><i data-lucide="coins"></i></div>
+          <div class="res-details">
+            <span class="res-name">CREDITS</span>
+            <span class="res-val" id="res-credits">0</span>
+          </div>
+        </div>
+        <div class="resource-item" title="Neon Crystals (Refined from loop factories)">
+          <div class="res-icon crystal-color"><i data-lucide="gem"></i></div>
+          <div class="res-details">
+            <span class="res-name">CRYSTALS</span>
+            <span class="res-val" id="res-crystals">0</span>
+          </div>
+        </div>
+        <div class="resource-item" title="Technology Points (Earned via research labs)">
+          <div class="res-icon tech-color"><i data-lucide="cpu"></i></div>
+          <div class="res-details">
+            <span class="res-name">TECH</span>
+            <span class="res-val" id="res-tech">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="separator"></div>
+
+      <!-- Drawing Tool Selector -->
+      <div class="tool-section">
+        <h3>ARCHITECTURAL INTENT</h3>
+        <div class="tool-grid">
+          <button class="tool-btn active" data-mode="logistics" title="Draw Roads & Transport Highways">
+            <i data-lucide="navigation"></i> LOGISTICS (ROADS)
+          </button>
+          <button class="tool-btn" data-mode="utility" title="Draw Power lines & Energy Generators">
+            <i data-lucide="zap"></i> UTILITIES (POWER)
+          </button>
+          <button class="tool-btn" data-mode="production" title="Draw Factories, Labs, and Markets">
+            <i data-lucide="factory"></i> INDUSTRY (HUBS)
+          </button>
+          <button class="tool-btn" data-mode="combat" title="Draw Laser Walls & Shield Domes">
+            <i data-lucide="shield"></i> DEFENSE (COMBAT)
+          </button>
+        </div>
+        <div class="drawing-hint">
+          <p id="drawing-hint-text">Mode: Logistics. Drag cursor to draw roads connecting coordinates.</p>
+        </div>
+      </div>
+      
+      <!-- Tech Tree Button -->
+      <button id="tech-tree-btn" class="neon-btn purple-glow mt-auto">
+        <i data-lucide="binary"></i> RESEARCH UPGRADES
+      </button>
+      <!-- Global Network Button -->
+      <button id="network-hub-btn" class="neon-btn cyan-glow mt-2">
+        <i data-lucide="users"></i> GLOBAL NETWORK
+      </button>
+    </section>
+
+    <!-- RIGHT SIDEBAR: PLAYERS & DETAILS -->
+    <section class="hud-sidebar-right glass">
+      <div class="panel-section">
+        <h3>SECTOR LEADERBOARD</h3>
+        <div class="player-list" id="active-players-list">
+          <div class="player-list-item">
+            <span>Offline</span>
+            <span>-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="panel-section flex-grow">
+        <h3>SECTOR STRUCTURE</h3>
+        <div class="inspector-panel" id="inspector">
+          <p class="empty-inspector">Click an active building to inspect level, statistics, upgrade, or recycle it.</p>
+          <div class="inspector-details hidden" id="inspector-content">
+            <h4 id="inspect-title" class="cyan-text">Shield Generator</h4>
+            <div class="stat-line">Owner: <span id="inspect-owner">-</span></div>
+            <div class="stat-line">Level: <span id="inspect-level">1</span></div>
+            <div class="stat-line">HP: <span id="inspect-hp">100/100</span></div>
+            <div class="stat-line">Energy stored: <span id="inspect-energy">0</span></div>
+            <div class="inspect-actions mt-4">
+              <button id="inspect-upgrade-btn" class="neon-btn green-glow btn-sm">Upgrade (150 Cr)</button>
+              <button id="inspect-hack-btn" class="neon-btn red-glow btn-sm">Hack (150 Cr)</button>
+              <button id="inspect-recycle-btn" class="neon-btn gray-glow btn-sm">Recycle</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAT BOX (BOTTOM LEFT) -->
+    <section class="hud-chat-box glass">
+      <div class="chat-tabs">
+        <button class="chat-tab active" data-channel="global">GLOBAL</button>
+        <button class="chat-tab" data-channel="guild">ALLIANCE</button>
+        <button class="chat-tab" data-channel="district">SECTOR</button>
+      </div>
+      <div class="chat-content" id="chat-messages">
+        <!-- Messages appended dynamically -->
+      </div>
+      <div class="chat-input-wrapper">
+        <input type="text" id="chat-input" placeholder="BROADCAST STRATEGY..." maxlength="100">
+        <button id="chat-send-btn"><i data-lucide="send"></i></button>
+      </div>
+    </section>
+  </div>
+
+  <!-- TECH TREE MODAL -->
+  <div id="tech-modal" class="modal-overlay hidden">
+    <div class="neon-card glass wide-card">
+      <div class="card-header flex justify-between items-center">
+        <h2>QUANTUM TECHNOLOGY BLUEPRINTS</h2>
+        <button class="close-btn" id="close-tech-btn">&times;</button>
+      </div>
+      <div class="card-body">
+        <p class="tech-intro">Spend earned Technology points to unlock new structural modifiers and levels.</p>
+        
+        <div class="tech-grid">
+          <div class="tech-node locked" id="node-grid">
+            <div class="node-icon"><i data-lucide="grid"></i></div>
+            <h4>Smart Power Grid</h4>
+            <p>Reduces power line construction costs by 20%.</p>
+            <span class="cost">Req: 2.0 Tech</span>
+            <button class="neon-btn btn-sm cyan-glow unlock-tech-btn" data-node="grid">Unlock Blueprint</button>
+          </div>
+          <div class="tech-node locked" id="node-laser">
+            <div class="node-icon"><i data-lucide="crosshair"></i></div>
+            <h4>Focused Laser Optics</h4>
+            <p>Increases defense tower range by 25%.</p>
+            <span class="cost">Req: 3.5 Tech</span>
+            <button class="neon-btn btn-sm cyan-glow unlock-tech-btn" data-node="laser">Unlock Blueprint</button>
+          </div>
+          <div class="tech-node locked" id="node-shields">
+            <div class="node-icon"><i data-lucide="shield-alert"></i></div>
+            <h4>Holographic Over-Shield</h4>
+            <p>Allows Shield Domes to absorb lightning storms.</p>
+            <span class="cost">Req: 5.0 Tech</span>
+            <button class="neon-btn btn-sm cyan-glow unlock-tech-btn" data-node="shields">Unlock Blueprint</button>
+          </div>
+          <div class="tech-node locked" id="node-reactors">
+            <div class="node-icon"><i data-lucide="atom"></i></div>
+            <h4>Fusion Generators</h4>
+            <p>Increases energy generation rate by 50%.</p>
+            <span class="cost">Req: 8.0 Tech</span>
+            <button class="neon-btn btn-sm cyan-glow unlock-tech-btn" data-node="reactors">Unlock Blueprint</button>
+          </div>
+          <div class="tech-node locked" id="node-quantum">
+            <div class="node-icon"><i data-lucide="orbit"></i></div>
+            <h4>Quantum Logistics</h4>
+            <p>Drones travel 100% faster and spawn instant return routes.</p>
+            <span class="cost">Req: 15.0 Tech</span>
+            <button class="neon-btn btn-sm cyan-glow unlock-tech-btn" data-node="quantum">Unlock Blueprint</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL NETWORK HUB MODAL -->
+  <div id="network-modal" class="modal-overlay hidden">
+    <div class="neon-card glass wide-card">
+      <div class="card-header flex justify-between items-center">
+        <h2>GLOBAL SECTOR NETWORK</h2>
+        <button class="close-btn" id="close-network-btn">&times;</button>
+      </div>
+      <div class="card-body">
+        <!-- Sub-Tabs -->
+        <div class="chat-tabs pb-2 flex gap-4">
+          <button class="chat-tab active network-tab-btn" data-nettab="friends">FRIENDS HUB</button>
+          <button class="chat-tab network-tab-btn" data-nettab="alliances">ALLIANCES</button>
+          <button class="chat-tab network-tab-btn" data-nettab="diplomacy">DIPLOMATIC TRADE</button>
+        </div>
+
+        <div class="separator"></div>
+
+        <!-- Tab 1: Friends Hub -->
+        <div class="net-tab-content" id="nettab-friends">
+          <div class="flex gap-4">
+            <div class="flex-grow" style="width: 50%;">
+              <h3>SECTOR PLAYERS</h3>
+              <div class="player-list mt-2" id="net-sector-players" style="max-height: 250px;">
+                <!-- List loaded dynamically -->
+              </div>
+            </div>
+            <div class="flex-grow" style="width: 50%;">
+              <h3>MY SECURE CONTACTS (FRIENDS)</h3>
+              <div class="player-list mt-2" id="net-friends-list" style="max-height: 250px;">
+                <!-- Friends list -->
+                <div class="player-list-item empty-list">No contacts established. Add friends from the sector list!</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Alliances -->
+        <div class="net-tab-content hidden" id="nettab-alliances">
+          <div class="flex gap-4">
+            <div class="flex-grow" style="width: 50%;">
+              <h3>FOUND NEW ALLIANCE</h3>
+              <p class="text-muted mb-2" style="font-size: 0.75rem;">Cost: 500 Credits. Establishes a secure alliance protocol for your team.</p>
+              <div class="input-group">
+                <label for="alliance-name-input">ALLIANCE NAME</label>
+                <input type="text" id="alliance-name-input" placeholder="ENTER NAME..." maxlength="20">
+              </div>
+              <button class="neon-btn cyan-glow btn-sm mt-2" id="net-create-alliance-btn">Found Alliance</button>
+            </div>
+            <div class="flex-grow" style="width: 50%;">
+              <h3>ALLIANCE PORTAL</h3>
+              <div class="inspector-panel" id="net-alliance-panel" style="height: 180px;">
+                <!-- Show current alliance info or invite -->
+                <p class="empty-inspector">You are not currently affiliated with any alliance.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Diplomatic Trade -->
+        <div class="net-tab-content hidden" id="nettab-diplomacy">
+          <h3>ESTABLISH TRADE CARAVAN</h3>
+          <p class="text-muted mb-4" style="font-size: 0.75rem;">Transfer resources securely to coordinates of verified friends or alliance members.</p>
+          <div class="input-group">
+            <label for="trade-recipient-select">RECIPIENT CONTACT</label>
+            <select id="trade-recipient-select">
+              <option value="">SELECT FRIEND OR ALLY...</option>
+            </select>
+          </div>
+          <div class="flex gap-4">
+            <div class="input-group flex-grow">
+              <label for="trade-credits-input">TRANSFER CREDITS</label>
+              <input type="number" id="trade-credits-input" placeholder="0" min="0" value="0">
+            </div>
+            <div class="input-group flex-grow">
+              <label for="trade-crystals-input">TRANSFER CRYSTALS</label>
+              <input type="number" id="trade-crystals-input" placeholder="0" min="0" value="0">
+            </div>
+          </div>
+          <button class="neon-btn green-glow mt-4" id="net-send-trade-btn">Launch Logistics Transport</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN CONTROL CONSOLE -->
+  <div id="admin-modal" class="modal-overlay hidden">
+    <div class="neon-card glass red-border">
+      <div class="card-header flex justify-between items-center">
+        <h2 class="text-red">ADMIN SIMULATOR CONTROL</h2>
+        <button class="close-btn" id="close-admin-btn">&times;</button>
+      </div>
+      <div class="card-body">
+        <div class="admin-group">
+          <h3>TRIGGER ATMOSPHERIC EVENTS</h3>
+          <div class="admin-actions">
+            <button class="admin-btn weather-trigger" data-weather="clear">CLEAR SKY</button>
+            <button class="admin-btn weather-trigger" data-weather="rain">ACID RAIN</button>
+            <button class="admin-btn weather-trigger" data-weather="solar_storm">SOLAR FLARE</button>
+            <button class="admin-btn weather-trigger" data-weather="blackout">POWER BLACKOUT</button>
+            <button class="admin-btn weather-trigger" data-weather="meteor_shower">METEOR SHOWER</button>
+            <button class="admin-btn weather-trigger" data-weather="emp_storm">EMP STORM</button>
+          </div>
+        </div>
+        
+        <div class="separator"></div>
+
+        <div class="admin-group">
+          <h3>WORLD DISASTERS</h3>
+          <div class="admin-actions">
+            <button class="admin-btn event-trigger red-bg" data-event="ai_rebellion">AI REBELLION</button>
+            <button class="admin-btn event-trigger yellow-bg text-black" data-event="power_crisis">POWER CRISIS</button>
+          </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="admin-group">
+          <h3>SYSTEM COMMANDS</h3>
+          <div class="admin-actions">
+            <button class="admin-btn reset-trigger danger-bg" id="admin-reset-btn">RESET SIMULATOR SEASON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Files. Order: ui, audio, drawing, game -->
+  <script type="module" src="js/ui.js"></script>
+  <script type="module" src="js/audio.js"></script>
+  <script type="module" src="js/drawing.js"></script>
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>
