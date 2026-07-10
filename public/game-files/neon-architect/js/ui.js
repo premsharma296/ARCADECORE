@@ -497,7 +497,7 @@ function varColor(variable) {
 }
 
 // BIND DOM EVENT LISTENERS
-document.addEventListener('DOMContentLoaded', () => {
+function bindUI() {
   // Color Picker Pick
   const colorBtns = document.querySelectorAll('.color-btn');
   colorBtns.forEach(btn => {
@@ -757,4 +757,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     lucide.createIcons();
   });
-});
+}
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  bindUI();
+} else {
+  document.addEventListener('DOMContentLoaded', bindUI);
+}
