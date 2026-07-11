@@ -29,7 +29,7 @@ export default function LiveSidebar() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [activityPlays, setActivityPlays] = useState<ActivityPlay[]>([])
   const [typedMessage, setTypedMessage] = useState('')
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Fetch real chat logs from database
   const fetchChat = useCallback(async () => {
@@ -93,7 +93,9 @@ export default function LiveSidebar() {
 
   // Scroll Chat to Bottom
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
   }, [chatMessages, activeSubTab])
 
   // User message submit handler to write directly to PostgreSQL
@@ -156,7 +158,7 @@ export default function LiveSidebar() {
       </div>
 
       {/* Main Feed area */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0 bg-[#090610]/40">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0 bg-[#090610]/40">
         {activeSubTab === 'chat' ? (
           <>
             {chatMessages.map((msg) => (
@@ -178,7 +180,6 @@ export default function LiveSidebar() {
                 </div>
               </div>
             ))}
-            <div ref={chatEndRef} />
           </>
         ) : (
           <div className="flex flex-col gap-2">

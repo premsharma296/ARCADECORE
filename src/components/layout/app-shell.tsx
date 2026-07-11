@@ -54,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isEmbedded) {
     return (
-      <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-white font-sans scanlines">
+      <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-white font-sans">
         {/* Cyber Grid Background */}
         <div className="fixed inset-0 cyber-grid pointer-events-none z-0" />
         
@@ -70,7 +70,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-white font-sans scanlines">
+    <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-white font-sans">
       {/* Cyber Grid Background */}
       <div className="fixed inset-0 cyber-grid pointer-events-none z-0" />
       
