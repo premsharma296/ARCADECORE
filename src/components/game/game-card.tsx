@@ -36,7 +36,7 @@ export default function GameCard({
   return (
     <Link
       href={`/games/${slug}`}
-      className="group relative flex flex-col rounded-2xl bg-card border border-border/40 overflow-hidden shadow-md hover:shadow-primary/10 hover:shadow-2xl hover:border-primary/30 transition-all duration-300 hover:scale-[1.03]"
+      className="card-shimmer group relative flex flex-col rounded-2xl bg-card border border-border/40 overflow-hidden shadow-md hover:shadow-primary/10 hover:shadow-2xl hover:border-primary/30 transition-all duration-300 hover:scale-[1.03]"
     >
       {/* Thumbnail Container */}
       <div className="relative aspect-video w-full overflow-hidden bg-muted">

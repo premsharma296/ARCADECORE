@@ -7,6 +7,9 @@ import GameCard from '@/components/game/game-card'
 import ContinuePlayingGrid from '@/components/game/continue-playing-grid'
 import InfiniteScrollGrid from '@/components/game/infinite-scroll-grid'
 import LiveSidebar from '@/components/realtime/live-sidebar'
+import DiscoverButton from '@/components/ui/discover-button'
+import MiniLeaderboard from '@/components/ui/mini-leaderboard'
+import LiveOnlineCount from '@/components/ui/live-online-count'
 import { getFullMockCatalog } from '@/lib/fallback-data'
 import { Flame, Star, Sparkles } from 'lucide-react'
 
@@ -72,6 +75,9 @@ export default async function Home() {
               <h2 className="text-xl font-bold font-display tracking-wider uppercase text-foreground">
                 Trending Games
               </h2>
+              <div className="ml-auto">
+                <LiveOnlineCount />
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
               {trendingGames.map((game) => (
@@ -131,12 +137,19 @@ export default async function Home() {
 
         {/* Real-time Side Control Tickers Panel (Right: 3 columns) */}
         <div className="lg:col-span-3 lg:sticky lg:top-24 flex flex-col gap-6">
+          {/* Live Activities Chat */}
           <div>
             <h3 className="text-xs font-bold text-foreground uppercase tracking-widest border-b border-border/40 pb-2 mb-3">
               🔴 Live Activities
             </h3>
             <LiveSidebar />
           </div>
+
+          {/* Mini Global Leaderboard */}
+          <MiniLeaderboard />
+
+          {/* Discover Random Game */}
+          <DiscoverButton games={games as any[]} />
         </div>
       </div>
     </AppShell>

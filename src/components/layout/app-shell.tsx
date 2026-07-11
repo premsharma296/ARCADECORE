@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import Header from './header'
 import Sidebar from './sidebar'
 import Footer from './footer'
+import LiveTickerBar from '@/components/ui/live-ticker-bar'
 import { sound } from '@/lib/sound'
 import { Volume2, VolumeX } from 'lucide-react'
 
@@ -80,6 +81,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Header */}
       <Header onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+
+      {/* Live Ticker News Bar */}
+      <LiveTickerBar />
 
       {/* Main Drawer Container */}
       <div className="flex flex-1 relative z-10 max-w-7xl w-full mx-auto">
