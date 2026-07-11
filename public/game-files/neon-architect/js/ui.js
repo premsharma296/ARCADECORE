@@ -37,52 +37,262 @@ export function onStructureSpawn(callback) {
   structureSpawnListeners.push(callback);
 }
 
-// Connect to backend WebSocket
+// // ---- LOCAL SIMULATION (runs when WebSocket unavailable) ----
+let localSimInterval = null;
+let localTick = 0;
+const localStructures = {};
+const localDrones = [];
+const localPlayers = [];
+const WEATHERS = ['clear','clear','clear','rain','solar_storm','emp_storm','meteor_shower','blackout'];
+let localWeather = 'clear';
+let localWeatherCountdown = 60;
+
+function startLocalSim() {
+  // Seed a few simulated online players for atmosphere
+  localPlayers.push(
+    { id: 'bot1', name: 'NOVA_PRIME', color: '#ff0055', region: 'NA', credits: 3400, crystals: 220, tech: 3.5, level: 5 },
+    { id: 'bot2', name: 'SYNTH_7',   color: '#0088ff', region: 'EU', credits: 2100, crystals: 180, tech: 2.0, level: 3 },
+    { id: 'bot3', name: 'VOID_EX',   color: '#ffcc00', region: 'AS', credits: 1500, crystals:  90, tech: 1.5, level: 2 }
+  );
+
+  // Post welcome chat messages
+  setTimeout(() => {
+    appendChatMessage({ sender: 'SYSTEM',   text: 'Sector node connected. Operating in local grid mode.', color: '#00ffcc', time: now() });
+    appendChatMessage({ sender: 'NOVA_PRIME', text: 'Welcome, new architect!',       color: '#ff0055', time: now() });
+    appendChatMessage({ sender: 'SYNTH_7',    text: 'Grid is yours. Build wisely.', color: '#0088ff', time: now() });
+  }, 800);
+
+  localSimInterval = setInterval(() => {
+    localTick++;
+
+    // Resource income every tick
+    clientState.credits  += 12 + clientState.level * 3;
+    clientState.crystals += 2  + clientState.level;
+    clientState.tech     += 0.05;
+
+    // Level-up every 100 ticks
+    if (localTick % 100 === 0) {
+      clientState.level = Math.min(clientState.level + 1, 50);
+      appendChatMessage({ sender: 'SYSTEM', text: `ARCHITECT LEVEL UP! You are now Level ${clientState.level}.`, color: '#00ffcc', time: now() });
+    }
+
+    // Random weather changes
+    localWeatherCountdown--;
+    if (localWeatherCountdown <= 0) {
+      localWeather = WEATHERS[Math.floor(Math.random() * WEATHERS.length)];
+      localWeatherCountdown = 45 + Math.floor(Math.random() * 60);
+      clientState.weather = localWeather;
+    }
+
+    clientState.tick = localTick;
+    clientState.players = [
+      { id: clientState.playerId, name: clientState.playerName, color: clientState.playerColor, region: 'Local', credits: clientState.credits, crystals: clientState.crystals, tech: clientState.tech, level: clientState.level },
+      ...localPlayers
+    ];
+    clientState.structures = localStructures;
+    clientState.drones = localDrones;
+    clientState.weather = localWeather;
+
+    updateHUD();
+
+    // Notify game.js render sync
+    const fakeSyncData = {
+      tick: localTick,
+      weather: { current: localWeather },
+      globalEvent: null,
+      structures: localStructures,
+      drones: localDrones,
+      players: clientState.players
+    };
+    syncListeners.forEach(fn => fn(fakeSyncData));
+  }, 1000);
+}
+
+function now() { return new Date().toLocaleTimeString(); }
+
+// Local draw handler — simulates building creation without server
+export function localHandleDraw(points, mode) {
+  if (points.length < 2) return;
+
+  const id = 'local-' + Date.now();
+  const centroid = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  centroid.x = Math.round(centroid.x / points.length);
+  centroid.y = Math.round(centroid.y / points.length);
+
+  // Detect closed loop vs open line
+  const first = points[0], last = points[points.length - 1];
+  const isLoop = Math.abs(first.x - last.x) <= 2 && Math.abs(first.y - last.y) <= 2;
+
+  let structType = 'road';
+  if (mode === 'logistics') structType = isLoop ? 'shield_dome'    : 'road';
+  if (mode === 'utility')   structType = isLoop ? 'generator'      : 'power_line';
+  if (mode === 'production') structType = isLoop ? 'factory'       : 'road';
+  if (mode === 'combat')    structType = isLoop ? 'shield_dome'    : 'laser_wall';
+
+  // Cost
+  const costs = { road: 50, power_line: 80, generator: 200, factory: 300, shield_dome: 250, laser_wall: 120 };
+  const cost = (costs[structType] || 80) * Math.max(1, points.length * 0.5);
+  if (clientState.credits < cost) {
+    triggerSystemNotice('INSUFFICIENT CREDITS!', 'error');
+    return;
+  }
+  clientState.credits -= cost;
+
+  const struct = {
+    id,
+    type: structType,
+    points,
+    centroid: { x: centroid.x, y: centroid.y },
+    ownerId: clientState.playerId,
+    ownerName: clientState.playerName,
+    ownerColor: clientState.playerColor,
+    level: 1,
+    hp: 100,
+    maxHp: 100,
+    energyStored: 0
+  };
+  localStructures[id] = struct;
+  clientState.structures = localStructures;
+  structureSpawnListeners.forEach(fn => fn(struct));
+  appendChatMessage({ sender: 'SYSTEM', text: `${structType.replace('_',' ').toUpperCase()} constructed!`, color: '#00ffcc', time: now() });
+  updateHUD();
+}
+
+// Connect to backend WebSocket, fall back to local simulation on failure
 export function connectToServer(username, color, region) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const urlParams = new URLSearchParams(window.location.search);
   const customWs = urlParams.get('ws');
   const socketUrl = customWs || `${protocol}//${window.location.host}`;
-  
+
   clientState.playerName = username;
   clientState.playerColor = color;
-  clientState.socket = new WebSocket(socketUrl);
+  clientState.playerId = 'player-' + username.toLowerCase().replace(/\s+/g, '-');
 
-  clientState.socket.onopen = () => {
-    console.log('Connected to server');
-    // Initialize Web Audio API on user interaction
-    initAudio();
-    playSound('select');
-    
-    // Authenticate
-    sendPayload({
-      type: 'auth',
-      username,
-      color,
-      region
-    });
-  };
+  // Initialize audio immediately on user interaction
+  initAudio();
 
-  clientState.socket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      handleServerMessage(data);
-    } catch (err) {
-      console.error('Failed to parse incoming WebSocket message:', err);
-    }
-  };
+  // Reveal HUD immediately — we'll sync resources once connected (or use local sim)
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  clientState.credits = 1000;
+  clientState.crystals = 100;
+  clientState.tech = 1.0;
+  clientState.level = 1;
+  updateHUD();
+  playSound('select');
 
-  clientState.socket.onclose = () => {
-    console.log('WebSocket connection closed.');
-    alert('Disconnected from sector server. Reconnecting...');
-    setTimeout(() => window.location.reload(), 3000);
-  };
+  // Attempt WebSocket connection with 4s timeout
+  let wsConnected = false;
+  let ws = null;
+
+  try {
+    ws = new WebSocket(socketUrl);
+    clientState.socket = ws;
+
+    const timeout = setTimeout(() => {
+      if (!wsConnected) {
+        console.warn('WebSocket timeout — starting local simulation mode.');
+        ws.close();
+        startLocalSim();
+        appendChatMessage({ sender: 'SYSTEM', text: 'Server offline. Running in solo simulation mode.', color: '#ffcc00', time: now() });
+      }
+    }, 4000);
+
+    ws.onopen = () => {
+      wsConnected = true;
+      clearTimeout(timeout);
+      console.log('Connected to Neon Architect server');
+      playSound('confirm');
+      sendPayload({ type: 'auth', username, color, region });
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleServerMessage(data);
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = () => {
+      if (!wsConnected) {
+        clearTimeout(timeout);
+        console.warn('WebSocket error — starting local simulation mode.');
+        startLocalSim();
+        appendChatMessage({ sender: 'SYSTEM', text: 'Server unreachable. Running in solo simulation mode.', color: '#ffcc00', time: now() });
+      }
+    };
+
+    ws.onclose = () => {
+      if (wsConnected) {
+        console.log('Server disconnected. Switching to local simulation.');
+        appendChatMessage({ sender: 'SYSTEM', text: 'Connection lost. Continuing in solo simulation mode.', color: '#ff0055', time: now() });
+        if (!localSimInterval) startLocalSim();
+      }
+    };
+  } catch(e) {
+    console.warn('WebSocket not available — starting local simulation mode.');
+    startLocalSim();
+  }
 }
 
-// Send standard payload to server
+// Send standard payload to server (no-op in local sim mode)
 export function sendPayload(payload) {
   if (clientState.socket && clientState.socket.readyState === WebSocket.OPEN) {
     clientState.socket.send(JSON.stringify(payload));
+  } else if (localSimInterval) {
+    // Handle actions locally
+    if (payload.type === 'draw') {
+      localHandleDraw(payload.points, payload.mode);
+    } else if (payload.type === 'chat') {
+      appendChatMessage({ sender: clientState.playerName, text: payload.text, color: clientState.playerColor, time: now() });
+    } else if (payload.type === 'upgrade') {
+      const s = localStructures[payload.structureId];
+      if (s) {
+        const cost = s.level * 150;
+        if (clientState.credits >= cost) {
+          clientState.credits -= cost;
+          s.level++;
+          s.maxHp += 50;
+          s.hp = s.maxHp;
+          updateHUD();
+          triggerSystemNotice('STRUCTURE UPGRADED!', 'success');
+        } else {
+          triggerSystemNotice('INSUFFICIENT CREDITS!', 'error');
+        }
+      }
+    } else if (payload.type === 'recycle') {
+      const s = localStructures[payload.structureId];
+      if (s) {
+        clientState.credits += 80;
+        delete localStructures[payload.structureId];
+        updateHUD();
+        triggerSystemNotice('STRUCTURE RECYCLED', 'success');
+      }
+    } else if (payload.type === 'hack') {
+      triggerSystemNotice('CANNOT HACK IN SOLO MODE', 'error');
+    } else if (payload.type === 'tech_unlock') {
+      const costs = { grid: 2.0, laser: 3.5, shields: 5.0, reactors: 8.0, quantum: 15.0 };
+      const req = costs[payload.node] || 2.0;
+      if (clientState.tech >= req) {
+        clientState.tech -= req;
+        clientState.unlockedTech.add(payload.node);
+        const nodeEl = document.getElementById(`node-${payload.node}`);
+        if (nodeEl) {
+          nodeEl.classList.remove('locked');
+          nodeEl.classList.add('unlocked');
+          const btn = nodeEl.querySelector('.unlock-tech-btn');
+          if (btn) btn.innerText = 'Unlocked';
+        }
+        updateHUD();
+        triggerSystemNotice('BLUEPRINT UNLOCKED!', 'success');
+        playSound('confirm');
+      } else {
+        triggerSystemNotice(`NEED ${req} TECH POINTS`, 'error');
+      }
+    }
   }
 }
 
