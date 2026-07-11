@@ -1,7 +1,8 @@
 import React from 'react'
 import db from '@/lib/db'
 import AppShell from '@/components/layout/app-shell'
-import HeroCarousel from '@/components/game/hero-carousel'
+import FeaturedGrid from '@/components/game/featured-grid'
+import VibeCategories from '@/components/game/vibe-categories'
 import GameCard from '@/components/game/game-card'
 import ContinuePlayingGrid from '@/components/game/continue-playing-grid'
 import InfiniteScrollGrid from '@/components/game/infinite-scroll-grid'
@@ -41,7 +42,7 @@ export default async function Home() {
   const games = await getGamesData()
 
   // Sift categories/featured items
-  const featuredGames = games.filter((g) => g.isFeatured).slice(0, 5)
+  const featuredGames = games.filter((g) => g.isFeatured).slice(0, 5) as any[]
   const trendingGames = games.slice(0, 4)
   const recommendedGames = games.filter((g) => g.rating >= 4.6).slice(0, 4)
 
@@ -51,9 +52,14 @@ export default async function Home() {
         {/* Main Content (Left: 9 columns) */}
         <div className="lg:col-span-9 flex flex-col gap-10">
           
-          {/* 1. Hero Showcase Carousel */}
+          {/* 1. Featured Mosaic Grid Showcase */}
           <section aria-label="Featured Games">
-            <HeroCarousel games={featuredGames} />
+            <FeaturedGrid games={featuredGames} />
+          </section>
+
+          {/* 2. Theme vibe category shortcuts */}
+          <section aria-label="Game Genres">
+            <VibeCategories />
           </section>
 
           {/* Continue/Recently Played Slider */}

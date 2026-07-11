@@ -58,24 +58,44 @@ export default function GameCard({
           </div>
         </div>
 
-        {/* Sponsored / Featured Badges */}
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10">
-          {isSponsored && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-accent text-accent-foreground uppercase tracking-widest rounded-md shadow-md border border-accent/20">
+        {/* Sponsored / Featured / Dynamic Badges */}
+        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10 select-none">
+          {isSponsored ? (
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-accent text-accent-foreground uppercase tracking-wider rounded shadow-md border border-accent/20">
               Sponsored
             </span>
-          )}
-          {isFeatured && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-primary text-white uppercase tracking-widest rounded-md shadow-md border border-primary/20">
+          ) : slug === 'neon-architect' || slug === 'snake-game' || slug === 'neon-race-3d' ? (
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-blue-600 text-white uppercase tracking-wider rounded shadow-md border border-blue-500/20 flex items-center gap-0.5">
+              <span className="w-1 h-1 rounded-full bg-white animate-ping" />
+              Updated
+            </span>
+          ) : playCount >= 240000 ? (
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-red-600 text-white uppercase tracking-wider rounded shadow-md border border-red-500/20 flex items-center gap-0.5">
+              🔥 Hot
+            </span>
+          ) : rating >= 4.7 ? (
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-amber-500 text-black uppercase tracking-wider rounded shadow-md border border-amber-400/20 flex items-center gap-0.5">
+              ⭐ Top
+            </span>
+          ) : isFeatured ? (
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-primary text-white uppercase tracking-wider rounded shadow-md border border-primary/20">
               Featured
             </span>
-          )}
+          ) : null}
         </div>
+
+        {/* Live Multiplayer Status Dot (Twitch-style) */}
+        {categories?.some(c => c.slug === 'multiplayer') && (
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-purple-600/90 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded shadow-md border border-purple-500/20 uppercase tracking-widest backdrop-blur-sm animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            <span>Live</span>
+          </div>
+        )}
 
         {/* Category Badge overlay on bottom */}
         {categories && categories.length > 0 && (
           <div className="absolute bottom-2.5 left-2.5 z-10 flex gap-1">
-            <span className="px-2 py-0.5 text-[10px] font-semibold bg-black/60 text-foreground uppercase tracking-wider rounded backdrop-blur-sm border border-white/5">
+            <span className="px-2 py-0.5 text-[9px] font-extrabold bg-black/60 text-foreground uppercase tracking-wider rounded backdrop-blur-sm border border-white/5">
               {categories[0].name}
             </span>
           </div>
