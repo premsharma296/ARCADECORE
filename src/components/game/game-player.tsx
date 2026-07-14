@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Maximize2, Minimize2, Play, Volume2, VolumeX, RotateCcw, AlertTriangle, ShieldCheck } from 'lucide-react'
 import InterstitialAd from '@/components/monetization/interstitial-ad'
+import { useUser } from '@clerk/nextjs'
+import ProgressWarningModal from '@/components/ui/progress-warning-modal'
 
 interface GamePlayerProps {
   iframeUrl: string
@@ -12,14 +14,16 @@ interface GamePlayerProps {
 }
 
 export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: GamePlayerProps) {
+  const { isSignedIn } = useUser()
   const [isPlaying, setIsPlaying] = useState(false)
   const [showAd, setShowAd] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [showWarningModal, setShowWarningModal] = useState(false)
   
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const handleStartPlay = () => {
+  const proceedToAd = () => {
     try {
       const saved = localStorage.getItem('arcadecore_monetization_settings')
       if (saved) {
@@ -33,6 +37,20 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
 
     // Show interstitial monetization ad gate before starting game
     setShowAd(true)
+  }
+
+  const handleStartPlay = () => {
+    if (!isSignedIn && sessionStorage.getItem('arcadecore_warned_guest') !== 'true') {
+      setShowWarningModal(true)
+      return
+    }
+    proceedToAd()
+  }
+
+  const handleContinueAsGuest = () => {
+    sessionStorage.setItem('arcadecore_warned_guest', 'true')
+    setShowWarningModal(false)
+    proceedToAd()
   }
 
   const handleAdComplete = () => {
@@ -257,6 +275,12 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
           </button>
         </div>
       </div>
+
+      <ProgressWarningModal
+        isOpen={showWarningModal}
+        onClose={() => setShowWarningModal(false)}
+        onContinueAsGuest={handleContinueAsGuest}
+      />
     </div>
   )
 }
