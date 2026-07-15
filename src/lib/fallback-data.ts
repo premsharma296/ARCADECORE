@@ -167,15 +167,15 @@ export const FALLBACK_GAMES: MockGame[] = [
     instructions: 'Move paddle left and right to keep the neon ball bouncing. Smash all glowing bricks to clear the level. Look out for multi-ball drops!',
     controls: 'Mouse / Touch : Slide to move paddle\nArrow Left / A : Steer Left\nArrow Right / D : Steer Right',
     iframeUrl: '/games/neon-breakout/index.html',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=400&auto=format&fit=crop',
-    bannerUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=1200&auto=format&fit=crop',
+    thumbnailUrl: '/games/neon-breakout/banner.jpg',
+    bannerUrl: '/games/neon-breakout/banner.jpg',
     playCount: 28450,
     rating: 4.8,
     isFeatured: true,
     isSponsored: false,
     categories: [{ name: 'Arcade', slug: 'arcade' }, { name: 'Puzzle', slug: 'puzzle' }],
     tags: [{ name: 'Neon', slug: 'neon' }, { name: 'Retro', slug: 'retro' }],
-    screenshots: ['https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=500&auto=format&fit=crop']
+    screenshots: ['/games/neon-breakout/banner.jpg']
   },
   {
     id: '9',
@@ -185,15 +185,15 @@ export const FALLBACK_GAMES: MockGame[] = [
     instructions: 'Jump over electrical barriers and laser gates. Perform double-jumps in mid-air to clear wide gaps. The speed increases the further you run.',
     controls: 'Space / Arrow Up / W / Touch : Jump & Double Jump',
     iframeUrl: '/games/cyber-jump/index.html',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=400&auto=format&fit=crop',
-    bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1200&auto=format&fit=crop',
+    thumbnailUrl: '/games/cyber-jump/banner.jpg',
+    bannerUrl: '/games/cyber-jump/banner.jpg',
     playCount: 43900,
     rating: 4.7,
     isFeatured: true,
     isSponsored: false,
     categories: [{ name: 'Arcade', slug: 'arcade' }, { name: 'Action', slug: 'action' }],
     tags: [{ name: 'Neon', slug: 'neon' }, { name: 'Physics', slug: 'physics' }],
-    screenshots: ['https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=500&auto=format&fit=crop']
+    screenshots: ['/games/cyber-jump/banner.jpg']
   }
 ]
 

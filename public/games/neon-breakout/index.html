@@ -17,7 +17,7 @@
       padding: 0;
       background-color: var(--background);
       color: var(--foreground);
-      font-family: 'Orbitron', 'Inter', sans-serif;
+      font-family: 'Orbitron', sans-serif;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -51,7 +51,7 @@
       pointer-events: none;
       font-weight: 900;
       text-transform: uppercase;
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 2px;
       text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
       color: var(--secondary);
@@ -104,18 +104,20 @@
       display: none !important;
     }
   </style>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="game-container">
     <div class="hud">
       <div>Score: <span id="score-val">0</span></div>
+      <div>Level: <span id="level-val">1</span></div>
       <div>Lives: <span id="lives-val">3</span></div>
     </div>
 
     <!-- Start Menu -->
     <div id="menu">
       <h1>Neon Breakout</h1>
+      <p style="color: var(--secondary); font-size: 11px; tracking-widest: 1px; text-transform: uppercase;">Smash bricks & earn real profile XP!</p>
       <button class="btn" id="start-btn">Start Hack</button>
     </div>
 
@@ -123,6 +125,7 @@
     <div id="game-over" class="hidden">
       <h1 id="over-title">Hack Failed</h1>
       <p style="margin: 0; text-transform: uppercase; letter-spacing: 2px; font-size: 12px; color: var(--secondary)">Final Score: <span id="final-score" style="color: white; font-weight: bold;">0</span></p>
+      <p id="xp-earned" style="margin: 0; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: var(--accent)"></p>
       <button class="btn" id="retry-btn">Try Again</button>
     </div>
 
@@ -133,6 +136,7 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreVal = document.getElementById('score-val');
+    const levelVal = document.getElementById('level-val');
     const livesVal = document.getElementById('lives-val');
     const startBtn = document.getElementById('start-btn');
     const retryBtn = document.getElementById('retry-btn');
@@ -140,6 +144,7 @@
     const gameOverScreen = document.getElementById('game-over');
     const overTitle = document.getElementById('over-title');
     const finalScore = document.getElementById('final-score');
+    const xpEarnedText = document.getElementById('xp-earned');
 
     // Web Audio Synthesizer
     let audioCtx = null;
@@ -156,68 +161,89 @@
       if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      
       osc.connect(gain);
       gain.connect(audioCtx.destination);
 
       if (type === 'hit') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(250, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
+        osc.stop(audioCtx.currentTime + 0.12);
       } else if (type === 'brick') {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(450, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+      } else if (type === 'laser') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
         gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.1);
+      } else if (type === 'powerup') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
       } else if (type === 'fail') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-        osc.frequency.linearRampToValueAtTime(60, audioCtx.currentTime + 0.4);
+        osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.45);
         gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.4);
+        osc.stop(audioCtx.currentTime + 0.45);
       } else if (type === 'win') {
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1);
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.2);
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.08);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.16);
         gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.35);
+        osc.stop(audioCtx.currentTime + 0.3);
       }
     }
 
-    // Set canvas dimensions
+    // Canvas size setup
     function resizeCanvas() {
       canvas.width = 600;
       canvas.height = 750;
     }
     resizeCanvas();
 
-    // Game Variables
+    // Game variables
     let score = 0;
+    let currentLevel = 1;
     let lives = 3;
     let gameRunning = false;
     let balls = [];
     let particles = [];
+    let powerups = [];
+    let lasers = [];
 
     const paddle = {
       x: canvas.width / 2 - 60,
-      y: canvas.height - 40,
+      y: canvas.height - 45,
       width: 120,
+      baseWidth: 120,
       height: 12,
       color: '#d946ef',
       shadow: '#d946ef',
-      speed: 8
+      speed: 8,
+      laserTimer: 0,
+      expandTimer: 0
     };
 
     let bricks = [];
@@ -232,13 +258,82 @@
 
     const brickColors = ['#ec4899', '#d946ef', '#a855f7', '#06b6d4', '#10b981'];
 
-    // Controller input
+    // Level Designs
+    const levels = [
+      // Level 1: Standard Full Grid
+      () => {
+        const width = (canvas.width - (brickConfig.offsetLeft * 2) - (brickConfig.padding * (brickConfig.cols - 1))) / brickConfig.cols;
+        for (let r = 0; r < brickConfig.rows; r++) {
+          for (let c = 0; c < brickConfig.cols; c++) {
+            bricks.push({
+              x: brickConfig.offsetLeft + c * (width + brickConfig.padding),
+              y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
+              width: width,
+              height: brickConfig.height,
+              color: brickColors[r % brickColors.length],
+              active: true
+            });
+          }
+        }
+      },
+      // Level 2: Space Invader pattern
+      () => {
+        const width = (canvas.width - (brickConfig.offsetLeft * 2) - (brickConfig.padding * (brickConfig.cols - 1))) / brickConfig.cols;
+        const pattern = [
+          [0, 1, 0, 0, 0, 0, 1, 0],
+          [0, 0, 1, 0, 0, 1, 0, 0],
+          [0, 1, 1, 1, 1, 1, 1, 0],
+          [1, 1, 0, 1, 1, 0, 1, 1],
+          [1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+        for (let r = 0; r < pattern.length; r++) {
+          for (let c = 0; c < pattern[r].length; c++) {
+            if (pattern[r][c] === 1) {
+              bricks.push({
+                x: brickConfig.offsetLeft + c * (width + brickConfig.padding),
+                y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
+                width: width,
+                height: brickConfig.height,
+                color: brickColors[r % brickColors.length],
+                active: true
+              });
+            }
+          }
+        }
+      },
+      // Level 3: Cross structure
+      () => {
+        const width = (canvas.width - (brickConfig.offsetLeft * 2) - (brickConfig.padding * (brickConfig.cols - 1))) / brickConfig.cols;
+        for (let r = 0; r < 6; r++) {
+          for (let c = 0; c < brickConfig.cols; c++) {
+            if (r === 2 || c === 3 || c === 4) {
+              bricks.push({
+                x: brickConfig.offsetLeft + c * (width + brickConfig.padding),
+                y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
+                width: width,
+                height: brickConfig.height,
+                color: brickColors[r % brickColors.length],
+                active: true
+              });
+            }
+          }
+        }
+      }
+    ];
+
     let rightPressed = false;
     let leftPressed = false;
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = true;
       if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = true;
+      if (e.key === ' ' && paddle.laserTimer > 0 && gameRunning) {
+        // Fire lasers
+        lasers.push({ x: paddle.x + 10, y: paddle.y - 10 });
+        lasers.push({ x: paddle.x + paddle.width - 10, y: paddle.y - 10 });
+        playSound('laser');
+        e.preventDefault();
+      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -246,7 +341,6 @@
       if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = false;
     });
 
-    // Touch/Mouse Drag Control
     canvas.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
       const relativeX = (e.clientX - rect.left) * (canvas.width / rect.width);
@@ -260,27 +354,26 @@
       e.preventDefault();
     }, { passive: false });
 
-    // Initialize/Reset Bricks
-    function createBricks() {
-      bricks = [];
-      const width = (canvas.width - (brickConfig.offsetLeft * 2) - (brickConfig.padding * (brickConfig.cols - 1))) / brickConfig.cols;
-      for (let r = 0; r < brickConfig.rows; r++) {
-        for (let c = 0; c < brickConfig.cols; c++) {
-          bricks.push({
-            x: brickConfig.offsetLeft + c * (width + brickConfig.padding),
-            y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
-            width: width,
-            height: brickConfig.height,
-            color: brickColors[r % brickColors.length],
-            active: true
-          });
-        }
+    // Touch click to shoot if laser active
+    canvas.addEventListener('touchstart', (e) => {
+      if (paddle.laserTimer > 0 && gameRunning) {
+        lasers.push({ x: paddle.x + 10, y: paddle.y - 10 });
+        lasers.push({ x: paddle.x + paddle.width - 10, y: paddle.y - 10 });
+        playSound('laser');
       }
+    });
+
+    function loadLevel(num) {
+      bricks = [];
+      powerups = [];
+      lasers = [];
+      const lvlIndex = (num - 1) % levels.length;
+      levels[lvlIndex]();
+      levelVal.innerText = num;
     }
 
-    // Particle explosions
     function createExplosion(x, y, color) {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 12; i++) {
         particles.push({
           x: x,
           y: y,
@@ -289,12 +382,11 @@
           radius: Math.random() * 3 + 2,
           color: color,
           alpha: 1,
-          decay: Math.random() * 0.03 + 0.02
+          decay: Math.random() * 0.035 + 0.02
         });
       }
     }
 
-    // Add normal Ball
     function addBall(x, y, dx = 4, dy = -5) {
       balls.push({
         x: x,
@@ -307,14 +399,36 @@
       });
     }
 
+    function syncProfileXp() {
+      // Sync 1 XP per 100 points, max 100 XP per game session
+      const xpToEarn = Math.min(Math.floor(score / 150), 100);
+      if (xpToEarn > 0) {
+        try {
+          window.parent.postMessage({
+            type: 'ARCADECORE_ADD_XP',
+            amount: xpToEarn
+          }, '*');
+          xpEarnedText.innerText = `Earned +${xpToEarn} Profile XP!`;
+        } catch (e) {
+          console.warn('Sync message failed:', e);
+        }
+      } else {
+        xpEarnedText.innerText = "";
+      }
+    }
+
     function initGame() {
       score = 0;
+      currentLevel = 1;
       lives = 3;
       scoreVal.innerText = score;
       livesVal.innerText = lives;
       balls = [];
       particles = [];
-      createBricks();
+      paddle.laserTimer = 0;
+      paddle.expandTimer = 0;
+      paddle.width = paddle.baseWidth;
+      loadLevel(currentLevel);
       addBall(canvas.width / 2, paddle.y - 15);
       paddle.x = canvas.width / 2 - paddle.width / 2;
     }
@@ -322,7 +436,24 @@
     function update() {
       if (!gameRunning) return;
 
-      // Move Paddle
+      // Handle power-up timers
+      if (paddle.expandTimer > 0) {
+        paddle.expandTimer -= 16.6; // ~1 frame at 60fps
+        paddle.width = paddle.baseWidth + 40;
+        paddle.color = '#eab308'; // change border color
+      } else {
+        paddle.width = paddle.baseWidth;
+        paddle.color = '#d946ef';
+      }
+
+      if (paddle.laserTimer > 0) {
+        paddle.laserTimer -= 16.6;
+        paddle.shadow = '#ef4444';
+      } else {
+        paddle.shadow = '#d946ef';
+      }
+
+      // Move Paddle via keys
       if (rightPressed && paddle.x < canvas.width - paddle.width) {
         paddle.x += paddle.speed;
       }
@@ -330,20 +461,77 @@
         paddle.x -= paddle.speed;
       }
 
+      // Move lasers
+      for (let l = lasers.length - 1; l >= 0; l--) {
+        const laser = lasers[l];
+        laser.y -= 7;
+
+        // Laser - Brick collision check
+        let hit = false;
+        for (let i = 0; i < bricks.length; i++) {
+          const brick = bricks[i];
+          if (!brick.active) continue;
+
+          if (laser.x > brick.x && laser.x < brick.x + brick.width &&
+              laser.y > brick.y && laser.y < brick.y + brick.height) {
+            
+            brick.active = false;
+            hit = true;
+            score += 100;
+            scoreVal.innerText = score;
+            createExplosion(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.color);
+            playSound('brick');
+            break;
+          }
+        }
+
+        if (hit || laser.y < 0) {
+          lasers.splice(l, 1);
+        }
+      }
+
+      // Move & update falling power-ups
+      for (let p = powerups.length - 1; p >= 0; p--) {
+        const power = powerups[p];
+        power.y += 2.5;
+
+        // Collect powerup check
+        if (power.y + 12 > paddle.y && power.y - 12 < paddle.y + paddle.height &&
+            power.x + 12 > paddle.x && power.x - 12 < paddle.x + paddle.width) {
+          
+          playSound('powerup');
+          if (power.type === 'extra_ball') {
+            // Spawn ball with opposite angle
+            addBall(power.x, paddle.y - 15, (Math.random() - 0.5) * 6, -5);
+          } else if (power.type === 'expand') {
+            paddle.expandTimer = 8000; // 8 seconds
+          } else if (power.type === 'laser') {
+            paddle.laserTimer = 6000; // 6 seconds
+          }
+
+          powerups.splice(p, 1);
+          continue;
+        }
+
+        // Remove offscreen
+        if (power.y > canvas.height + 20) {
+          powerups.splice(p, 1);
+        }
+      }
+
       // Update Balls
       for (let b = balls.length - 1; b >= 0; b--) {
         const ball = balls[b];
         
-        // Save Trail
         ball.trail.push({ x: ball.x, y: ball.y });
         if (ball.trail.length > 8) ball.trail.shift();
 
-        // Bounce Sides
+        // Bounce horizontal sides
         if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
           ball.dx = -ball.dx;
           playSound('hit');
         }
-        // Bounce Top
+        // Bounce top roof
         if (ball.y + ball.dy < ball.radius) {
           ball.dy = -ball.dy;
           playSound('hit');
@@ -356,9 +544,8 @@
             ball.x < paddle.x + paddle.width + ball.radius) {
           
           ball.dy = -Math.abs(ball.dy);
-          // Angle ball based on hit position relative to paddle center
           const hitPos = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
-          ball.dx = hitPos * 6;
+          ball.dx = hitPos * 6.5;
           playSound('hit');
         }
 
@@ -369,7 +556,6 @@
           if (!brick.active) continue;
           activeBricks++;
 
-          // Collide boundary
           if (ball.x + ball.radius > brick.x && 
               ball.x - ball.radius < brick.x + brick.width &&
               ball.y + ball.radius > brick.y && 
@@ -382,18 +568,25 @@
             createExplosion(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.color);
             playSound('brick');
             
-            // Power-up chance: Split Ball!
-            if (Math.random() < 0.12 && balls.length < 5) {
-              addBall(ball.x, ball.y, -ball.dx, -ball.dy);
+            // Random Powerup spawn (15% chance)
+            if (Math.random() < 0.15) {
+              const types = ['extra_ball', 'expand', 'laser'];
+              const randType = types[Math.floor(Math.random() * types.length)];
+              powerups.push({
+                x: brick.x + brick.width / 2,
+                y: brick.y + brick.height / 2,
+                type: randType
+              });
             }
             break;
           }
         }
 
-        // Check if level clear
+        // Level Clear Check
         if (activeBricks === 0) {
           playSound('win');
-          createBricks();
+          currentLevel++;
+          loadLevel(currentLevel);
           addBall(canvas.width / 2, paddle.y - 15, (Math.random() - 0.5) * 6, -5);
         }
 
@@ -401,7 +594,6 @@
         if (ball.y + ball.dy > canvas.height + ball.radius) {
           balls.splice(b, 1);
         } else {
-          // Move ball
           ball.x += ball.dx;
           ball.y += ball.dy;
         }
@@ -416,10 +608,13 @@
           gameRunning = false;
           finalScore.innerText = score;
           overTitle.innerText = "Hack Failed";
+          syncProfileXp();
           gameOverScreen.classList.remove('hidden');
         } else {
           addBall(canvas.width / 2, paddle.y - 15, 4, -5);
           paddle.x = canvas.width / 2 - paddle.width / 2;
+          paddle.laserTimer = 0;
+          paddle.expandTimer = 0;
         }
       }
 
@@ -469,6 +664,42 @@
         ctx.restore();
       });
 
+      // Draw Lasers
+      lasers.forEach(laser => {
+        ctx.save();
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ef4444';
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath();
+        ctx.arc(laser.x, laser.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Draw Power-ups
+      powerups.forEach(power => {
+        ctx.save();
+        let color = '#06b6d4';
+        let symbol = '🌐';
+        if (power.type === 'expand') { color = '#eab308'; symbol = '↔️'; }
+        if (power.type === 'laser') { color = '#ef4444'; symbol = '⚡'; }
+
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = color;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(power.x, power.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw symbol
+        ctx.fillStyle = '#000000';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(symbol, power.x, power.y);
+        ctx.restore();
+      });
+
       // Draw Paddle
       ctx.save();
       ctx.shadowBlur = 12;
@@ -477,11 +708,17 @@
       ctx.beginPath();
       ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 6);
       ctx.fill();
+      
+      // Draw Laser Turrets if laser powerup active
+      if (paddle.laserTimer > 0) {
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(paddle.x + 5, paddle.y - 8, 8, 8);
+        ctx.fillRect(paddle.x + paddle.width - 13, paddle.y - 8, 8, 8);
+      }
       ctx.restore();
 
       // Draw Balls & Trails
       balls.forEach(ball => {
-        // Trail first
         ball.trail.forEach((t, index) => {
           ctx.save();
           ctx.globalAlpha = (index / ball.trail.length) * 0.4;
@@ -542,7 +779,6 @@
       playSound('win');
     });
 
-    // Start game loop
     loop();
   </script>
 </body>

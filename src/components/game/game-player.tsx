@@ -184,6 +184,32 @@ export default function GamePlayer({ iframeUrl, title, slug, thumbnailUrl }: Gam
     }
   }, [])
 
+  // Listen to postMessage from the game iframe to reward XP dynamically in-game
+  useEffect(() => {
+    const handleGameMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+
+      const data = event.data
+      if (data && data.type === 'ARCADECORE_ADD_XP') {
+        const amount = data.amount || 0
+        if (amount > 0 && isSignedIn) {
+          try {
+            await fetch('/api/user/add-xp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ xp: amount })
+            })
+          } catch (e) {
+            console.error('Failed to sync in-game XP:', e)
+          }
+        }
+      }
+    }
+
+    window.addEventListener('message', handleGameMessage)
+    return () => window.removeEventListener('message', handleGameMessage)
+  }, [isSignedIn])
+
   return (
     <div className="flex flex-col gap-3">
       {/* Game Iframe Container */}

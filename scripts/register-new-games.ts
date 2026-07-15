@@ -11,8 +11,8 @@ async function registerNewGames() {
       instructions: 'Move your glowing paddle left and right to bounce the balls. Smash all active neon blocks on the board to complete the level. Collect split-ball powerups to handle multiple balls at once.',
       controls: 'Mouse / Touch: Drag to steer paddle\nArrow Left / A: Steer Left\nArrow Right / D: Steer Right\nSpace: Start Game',
       iframeUrl: '/games/neon-breakout/index.html',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=400&auto=format&fit=crop',
-      bannerUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=1200&auto=format&fit=crop',
+      thumbnailUrl: '/games/neon-breakout/banner.jpg',
+      bannerUrl: '/games/neon-breakout/banner.jpg',
       rating: 4.8,
       categories: ['arcade', 'puzzle'],
       tags: ['neon', 'retro']
@@ -24,8 +24,8 @@ async function registerNewGames() {
       instructions: 'Jump over obstacles that slide towards you. Avoid crashing into the high-voltage neon barriers. Perform double jumps in mid-air to clear larger gaps or laser gates.',
       controls: 'Space / Arrow Up / W / Touch: Jump (Press again in mid-air to double-jump)',
       iframeUrl: '/games/cyber-jump/index.html',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=400&auto=format&fit=crop',
-      bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1200&auto=format&fit=crop',
+      thumbnailUrl: '/games/cyber-jump/banner.jpg',
+      bannerUrl: '/games/cyber-jump/banner.jpg',
       rating: 4.7,
       categories: ['arcade', 'action'],
       tags: ['neon', 'physics']

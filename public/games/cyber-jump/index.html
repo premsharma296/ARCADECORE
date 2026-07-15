@@ -51,7 +51,7 @@
       pointer-events: none;
       font-weight: 900;
       text-transform: uppercase;
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 2px;
       text-shadow: 0 0 8px rgba(217, 70, 239, 0.6);
       color: var(--primary);
@@ -110,12 +110,14 @@
   <div id="game-container">
     <div class="hud">
       <div>Distance: <span id="dist-val">0m</span></div>
-      <div>Max Record: <span id="best-val">0m</span></div>
+      <div>Coins: <span id="coins-val" style="color: var(--accent);">0</span></div>
+      <div>Best: <span id="best-val">0m</span></div>
     </div>
 
     <!-- Start Menu -->
     <div id="menu">
       <h1>Cyber Jump</h1>
+      <p style="color: var(--secondary); font-size: 11px; tracking-widest: 1px; text-transform: uppercase;">Leap lasers & earn real profile XP!</p>
       <button class="btn" id="start-btn">Start Bypass</button>
     </div>
 
@@ -123,6 +125,7 @@
     <div id="game-over" class="hidden">
       <h1>Core Crashed</h1>
       <p style="margin: 0; text-transform: uppercase; letter-spacing: 2px; font-size: 12px; color: var(--primary)">Distance Traveled: <span id="final-dist" style="color: white; font-weight: bold;">0m</span></p>
+      <p id="xp-earned" style="margin: 0; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: var(--accent)"></p>
       <button class="btn" id="retry-btn">Reboot System</button>
     </div>
 
@@ -133,12 +136,14 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const distVal = document.getElementById('dist-val');
+    const coinsVal = document.getElementById('coins-val');
     const bestVal = document.getElementById('best-val');
     const startBtn = document.getElementById('start-btn');
     const retryBtn = document.getElementById('retry-btn');
     const menu = document.getElementById('menu');
     const gameOverScreen = document.getElementById('game-over');
     const finalDist = document.getElementById('final-dist');
+    const xpEarnedText = document.getElementById('xp-earned');
 
     // Web Audio Synthesizer
     let audioCtx = null;
@@ -174,6 +179,30 @@
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.1);
+      } else if (type === 'coin') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.16);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.16);
+      } else if (type === 'shield') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
+      } else if (type === 'shield_lost') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
       } else if (type === 'crash') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(200, audioCtx.currentTime);
@@ -182,14 +211,6 @@
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.35);
-      } else if (type === 'powerup') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.08);
-        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.2);
       }
     }
 
@@ -208,9 +229,11 @@
     let gameSpeed = 5.5;
     const gravity = 0.5;
     let distance = 0;
+    let coins = 0;
     let gameRunning = false;
     let obstacles = [];
     let particles = [];
+    let items = []; // Collectible coins and shields
     let backgroundLines = [];
 
     // Player Configuration
@@ -225,10 +248,11 @@
       isJumping: false,
       jumpsUsed: 0,
       maxJumps: 2,
-      trail: []
+      shieldActive: false,
+      trail: [],
+      shieldAngle: 0
     };
 
-    // Ground info
     const groundY = canvas.height - 100;
 
     // Trigger jump
@@ -241,6 +265,19 @@
           playSound('jump');
         } else {
           playSound('double');
+          // Create double-jump halo burst
+          for (let i = 0; i < 8; i++) {
+            particles.push({
+              x: player.x + player.width / 2,
+              y: player.y + player.height,
+              vx: (Math.random() - 0.5) * 4,
+              vy: Math.random() * 3 + 1,
+              radius: Math.random() * 2 + 1,
+              color: '#d946ef',
+              alpha: 0.8,
+              decay: 0.03
+            });
+          }
         }
       }
     }
@@ -278,7 +315,7 @@
     }
 
     function createExplosion(x, y, color) {
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 18; i++) {
         particles.push({
           x: x,
           y: y,
@@ -292,15 +329,37 @@
       }
     }
 
+    function syncProfileXp() {
+      // Sync distance to profile XP (1 XP per 10m + 5 XP per coin, max 120 XP per session)
+      const xpToEarn = Math.min(Math.floor(distance / 10) + (coins * 5), 120);
+      if (xpToEarn > 0) {
+        try {
+          window.parent.postMessage({
+            type: 'ARCADECORE_ADD_XP',
+            amount: xpToEarn
+          }, '*');
+          xpEarnedText.innerText = `Earned +${xpToEarn} Profile XP!`;
+        } catch (e) {
+          console.warn('Sync failed:', e);
+        }
+      } else {
+        xpEarnedText.innerText = "";
+      }
+    }
+
     function initGame() {
       distance = 0;
+      coins = 0;
       gameSpeed = 5.5;
       obstacles = [];
       particles = [];
+      items = [];
+      coinsVal.innerText = '0';
       player.y = groundY - player.height;
       player.vy = 0;
       player.jumpsUsed = 0;
       player.isJumping = false;
+      player.shieldActive = false;
       player.trail = [];
       initBackground();
     }
@@ -313,7 +372,12 @@
       distVal.innerText = Math.floor(distance) + 'm';
 
       // Accelerate Slowly
-      gameSpeed += 0.0006;
+      gameSpeed += 0.0007;
+
+      // Rotate Shield decoration
+      if (player.shieldActive) {
+        player.shieldAngle += 0.05;
+      }
 
       // Update Parallax Background lines
       backgroundLines.forEach(line => {
@@ -342,7 +406,7 @@
 
       // Spawn Obstacles
       if (obstacles.length === 0 || 
-          (canvas.width - obstacles[obstacles.length - 1].x > (Math.random() * 150 + 200))) {
+          (canvas.width - obstacles[obstacles.length - 1].x > (Math.random() * 180 + 200))) {
         
         const type = Math.random() > 0.4 ? 'barrier' : 'laser_gate';
         if (type === 'barrier') {
@@ -356,7 +420,6 @@
             type: 'barrier'
           });
         } else {
-          // Floating high voltage bar (must slide slide/duck or double jump)
           obstacles.push({
             x: canvas.width,
             y: groundY - 80,
@@ -365,6 +428,57 @@
             color: '#eab308',
             type: 'laser_gate'
           });
+        }
+      }
+
+      // Spawn Collectible Items (Coins or Shield)
+      if (Math.random() < 0.015 && items.length < 5) {
+        const type = Math.random() > 0.15 ? 'coin' : 'shield';
+        const heightOffset = Math.random() > 0.5 ? 40 : 120; // floating or high-up
+        items.push({
+          x: canvas.width + Math.random() * 100,
+          y: groundY - heightOffset,
+          radius: type === 'coin' ? 8 : 10,
+          type: type,
+          color: type === 'coin' ? '#eab308' : '#06b6d4'
+        });
+      }
+
+      // Move & Collide Items
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        item.x -= gameSpeed;
+
+        // Collision Check with player
+        const dx = (player.x + player.width / 2) - item.x;
+        const dy = (player.y + player.height / 2) - item.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < item.radius + player.width / 2) {
+          // Collected!
+          if (item.type === 'coin') {
+            coins++;
+            coinsVal.innerText = coins;
+            playSound('coin');
+            // spawn spark particles
+            for (let j = 0; j < 5; j++) {
+              particles.push({
+                x: item.x, y: item.y,
+                vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+                radius: Math.random() * 2 + 1, color: '#eab308',
+                alpha: 0.9, decay: 0.05
+              });
+            }
+          } else if (item.type === 'shield') {
+            player.shieldActive = true;
+            playSound('shield');
+          }
+          items.splice(i, 1);
+          continue;
+        }
+
+        if (item.x + item.radius < 0) {
+          items.splice(i, 1);
         }
       }
 
@@ -379,18 +493,27 @@
             player.y < obs.y + obs.height &&
             player.y + player.height > obs.y) {
           
-          // Game Over Crash
-          gameRunning = false;
-          playSound('crash');
-          createExplosion(player.x + player.width / 2, player.y + player.height / 2, player.color);
-          
-          if (distance > highScore) {
-            highScore = Math.floor(distance);
-            localStorage.setItem('cyberjump_high', highScore);
-            bestVal.innerText = highScore + 'm';
+          if (player.shieldActive) {
+            // Absorb crash with shield!
+            player.shieldActive = false;
+            playSound('shield_lost');
+            createExplosion(player.x + player.width / 2, player.y + player.height / 2, '#06b6d4');
+            obstacles.splice(i, 1); // destroy obstacle
+          } else {
+            // Game Over Crash
+            gameRunning = false;
+            playSound('crash');
+            createExplosion(player.x + player.width / 2, player.y + player.height / 2, player.color);
+            
+            if (distance > highScore) {
+              highScore = Math.floor(distance);
+              localStorage.setItem('cyberjump_high', highScore);
+              bestVal.innerText = highScore + 'm';
+            }
+            finalDist.innerText = Math.floor(distance) + 'm';
+            syncProfileXp();
+            gameOverScreen.classList.remove('hidden');
           }
-          finalDist.innerText = Math.floor(distance) + 'm';
-          gameOverScreen.classList.remove('hidden');
           break;
         }
 
@@ -438,6 +561,31 @@
       ctx.stroke();
       ctx.restore();
 
+      // Draw Collectibles (Coins or Shields)
+      items.forEach(item => {
+        ctx.save();
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = item.color;
+        ctx.fillStyle = item.color;
+        ctx.beginPath();
+        if (item.type === 'coin') {
+          // Draw spinning coin effect
+          ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+          ctx.fill();
+          // coin inner detail
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          // Draw shield diamond
+          ctx.rect(item.x - 7, item.y - 7, 14, 14);
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+
       // Draw Obstacles
       obstacles.forEach(obs => {
         ctx.save();
@@ -472,6 +620,17 @@
       ctx.roundRect(player.x, player.y, player.width, player.height, 6);
       ctx.fill();
       ctx.stroke();
+
+      // Draw active shield ring
+      if (player.shieldActive) {
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#06b6d4';
+        ctx.beginPath();
+        ctx.arc(player.x + player.width / 2, player.y + player.height / 2, 28, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
 
       // Draw Particles
@@ -499,7 +658,7 @@
       initGame();
       menu.classList.add('hidden');
       gameRunning = true;
-      playSound('powerup');
+      playSound('shield');
     });
 
     retryBtn.addEventListener('click', () => {
@@ -507,7 +666,7 @@
       initGame();
       gameOverScreen.classList.add('hidden');
       gameRunning = true;
-      playSound('powerup');
+      playSound('shield');
     });
 
     loop();
