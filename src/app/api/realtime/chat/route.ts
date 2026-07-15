@@ -57,6 +57,14 @@ export async function POST(req: NextRequest) {
 
     let message
     try {
+      // Clean up old messages older than 24 hours to keep the database fresh daily
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      await db.chatMessage.deleteMany({
+        where: {
+          createdAt: { lt: oneDayAgo }
+        }
+      }).catch(err => console.warn('Chat auto-cleanup failed:', err))
+
       message = await db.chatMessage.create({
         data: {
           room: room || 'global',
