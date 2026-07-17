@@ -6,6 +6,20 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const room = searchParams.get('room') || 'global'
 
+    // Clean up old messages older than 24 hours (run 5% of fetches to throttle database load)
+    if (Math.random() < 0.05) {
+      try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        await db.chatMessage.deleteMany({
+          where: {
+            createdAt: { lt: oneDayAgo }
+          }
+        })
+      } catch (err) {
+        console.warn('Chat auto-cleanup in GET failed:', err)
+      }
+    }
+
     let messages: any[] = []
     try {
       messages = await db.chatMessage.findMany({
