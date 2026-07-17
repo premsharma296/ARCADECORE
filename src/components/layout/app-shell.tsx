@@ -35,9 +35,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener('click', startOnInteraction)
     window.addEventListener('keydown', startOnInteraction)
 
+    // Handle tab visibility changes (pauses music on tab hide, resumes on tab focus)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        sound.stopBackgroundMusic()
+      } else {
+        if (localStorage.getItem('arcadecore_bg_music') === 'true') {
+          sound.playBackgroundMusic()
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
       window.removeEventListener('click', startOnInteraction)
       window.removeEventListener('keydown', startOnInteraction)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 

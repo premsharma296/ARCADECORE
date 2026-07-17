@@ -26,21 +26,7 @@ export default function RewardsPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const spinAngleRef = useRef(0)
 
-  // Start looping background music on user interaction
-  useEffect(() => {
-    const startMusic = () => {
-      sound.playBackgroundMusic()
-    }
-    
-    window.addEventListener('click', startMusic)
-    window.addEventListener('keydown', startMusic)
 
-    return () => {
-      window.removeEventListener('click', startMusic)
-      window.removeEventListener('keydown', startMusic)
-      sound.stopBackgroundMusic()
-    }
-  }, [])
 
   // Check daily reward status from database on mount
   useEffect(() => {
