@@ -46,6 +46,11 @@ export default function RootLayout({
           {process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION && (
             <meta name="google-site-verification" content={process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION} />
           )}
+          <script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6180692691407785"
+            crossOrigin="anonymous"
+          ></script>
         </head>
         <body className="min-h-full flex flex-col font-sans bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
           {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
@@ -75,12 +80,6 @@ export default function RootLayout({
               `}
             </Script>
           )}
-          <Script
-            async
-            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6180692691407785"
-            crossOrigin="anonymous"
-            strategy="afterInteractive"
-          />
           <ThemeProvider>
             <AuthSync />
             <Analytics />
